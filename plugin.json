@@ -1,6 +1,6 @@
 {
   "name": "magic-cc-codex-worker",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Orchestrate Codex as Claude Code agent workers (spawn, resume, status, cancel)",
   "mcpServers": [".claude/mcp-servers.json"]
 }

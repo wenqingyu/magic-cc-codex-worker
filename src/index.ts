@@ -77,6 +77,22 @@ const SpawnInputZ = z.object({
 });
 const StatusInputZ = z.object({ agent_id: z.string().optional() });
 const ResultInputZ = z.object({ agent_id: z.string() });
+const ResumeInputZ = z.object({
+  agent_id: z.string(),
+  prompt: z.string().min(1),
+  overrides: z.object({ timeout_seconds: z.number().optional() }).optional(),
+});
+const CancelInputZ = z.object({
+  agent_id: z.string(),
+  force: z.boolean().optional(),
+});
+const ListInputZ = z.object({
+  role: z.enum(["implementer", "reviewer", "planner", "generic"]).optional(),
+  status: z.enum(["queued", "running", "completed", "failed", "cancelled"]).optional(),
+  issue_id: z.string().optional(),
+  has_pr: z.boolean().optional(),
+  stale_after_seconds: z.number().optional(),
+});
 
 async function main() {
   const repoRoot = await detectRepoRoot();
@@ -167,6 +183,60 @@ async function main() {
         },
       },
       {
+        name: "resume",
+        description:
+          "Continue a previously-completed (or failed/cancelled) agent by sending a follow-up prompt. Requires the agent to have produced a thread_id during its initial run. Returns immediately with status=running; poll via `status`.",
+        inputSchema: {
+          type: "object",
+          required: ["agent_id", "prompt"],
+          properties: {
+            agent_id: { type: "string" },
+            prompt: { type: "string" },
+            overrides: {
+              type: "object",
+              properties: { timeout_seconds: { type: "number" } },
+            },
+          },
+        },
+      },
+      {
+        name: "cancel",
+        description:
+          "Cancel a running agent. Kills the codex subprocess and marks status=cancelled (not failed). Worktree is preserved unless force=true.",
+        inputSchema: {
+          type: "object",
+          required: ["agent_id"],
+          properties: {
+            agent_id: { type: "string" },
+            force: {
+              type: "boolean",
+              description: "Also remove the worktree and delete its branch.",
+            },
+          },
+        },
+      },
+      {
+        name: "list",
+        description:
+          "List agents with optional filters: role, status, issue_id, has_pr, stale_after_seconds (agents whose terminal state is older than N seconds). No filters = all agents.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            role: {
+              type: "string",
+              enum: ["implementer", "reviewer", "planner", "generic"],
+            },
+            status: {
+              type: "string",
+              enum: ["queued", "running", "completed", "failed", "cancelled"],
+            },
+            issue_id: { type: "string" },
+            has_pr: { type: "boolean" },
+            stale_after_seconds: { type: "number" },
+          },
+        },
+      },
+      {
         name: "get_delegation_policy",
         description:
           "Return the user's configured delegation policy (minimal/balance/max) and the guidance for each level. CALL THIS AT THE START OF EVERY SESSION where you might spawn Codex agents — the current level tells you how aggressively to offload work from Claude to Codex.",
@@ -219,6 +289,50 @@ async function main() {
         status: rec.status,
         output: rec.last_output,
         error: rec.error,
+      };
+      return {
+        content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
+        structuredContent: payload as unknown as Record<string, unknown>,
+      };
+    }
+    if (name === "resume") {
+      const parsed = ResumeInputZ.parse(args);
+      const result = await orch.resume(parsed);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        structuredContent: result as unknown as Record<string, unknown>,
+      };
+    }
+    if (name === "cancel") {
+      const parsed = CancelInputZ.parse(args);
+      const result = await orch.cancel(parsed);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        structuredContent: result as unknown as Record<string, unknown>,
+      };
+    }
+    if (name === "list") {
+      const parsed = ListInputZ.parse(args);
+      const all = await registry.list();
+      const now = Date.now();
+      const filtered = all.filter((rec) => {
+        if (parsed.role && rec.role !== parsed.role) return false;
+        if (parsed.status && rec.status !== parsed.status) return false;
+        if (parsed.issue_id && rec.issue_id !== parsed.issue_id) return false;
+        if (parsed.has_pr !== undefined) {
+          const hasPr = rec.pr_number != null;
+          if (hasPr !== parsed.has_pr) return false;
+        }
+        if (parsed.stale_after_seconds !== undefined && rec.ended_at) {
+          const ageSec = (now - Date.parse(rec.ended_at)) / 1000;
+          if (ageSec < parsed.stale_after_seconds) return false;
+        }
+        return true;
+      });
+      const payload = {
+        agents: filtered.map(agentSummary),
+        summary: countByStatus(filtered),
+        total: filtered.length,
       };
       return {
         content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],

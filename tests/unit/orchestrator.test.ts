@@ -10,6 +10,32 @@ import type { CodexChild } from "../../src/mcp/codex-client.js";
 
 const rolesDir = resolve(process.cwd(), "src", "roles", "defaults");
 
+// Shared helper: codex child whose call() hangs until stop() is called.
+// Models real transport-close semantics: once stopped, any in-flight OR future
+// call() rejects immediately.
+function makeCancellableFactory(): () => CodexChild {
+  return () => {
+    let rejectCall: ((e: Error) => void) | null = null;
+    let stopped = false;
+    return {
+      start: vi.fn().mockResolvedValue(undefined),
+      call: vi.fn().mockImplementation(() => {
+        if (stopped) return Promise.reject(new Error("transport closed"));
+        return new Promise((_, reject) => {
+          rejectCall = reject;
+        });
+      }),
+      stop: vi.fn().mockImplementation(async () => {
+        stopped = true;
+        rejectCall?.(new Error("transport closed"));
+      }),
+      get pid() {
+        return 4242;
+      },
+    } as unknown as CodexChild;
+  };
+}
+
 describe("Orchestrator.spawn", () => {
   let stateDir: string;
   let repo: string;
@@ -47,6 +73,7 @@ describe("Orchestrator.spawn", () => {
         },
       }) as unknown as CodexChild;
   }
+
 
   it("returns immediately with status=running and agent_id", async () => {
     const orch = new Orchestrator({
@@ -159,5 +186,201 @@ describe("Orchestrator.spawn", () => {
     await orch.waitForAgent(res.agent_id);
     const passed = call.mock.calls[0][0];
     expect(passed.developer_instructions).toContain("EXTRA-GUIDANCE-TOKEN");
+  });
+});
+
+describe("Orchestrator.resume", () => {
+  let stateDir: string;
+  let repo: string;
+  let registry: Registry;
+  let worktrees: Worktrees;
+
+  beforeEach(async () => {
+    stateDir = mkdtempSync(join(tmpdir(), "orch-res-state-"));
+    repo = mkdtempSync(join(tmpdir(), "orch-res-repo-"));
+    await execa("git", ["-C", repo, "init", "-q", "-b", "main"]);
+    await execa("git", ["-C", repo, "config", "user.email", "t@t"]);
+    await execa("git", ["-C", repo, "config", "user.name", "t"]);
+    await execa("git", ["-C", repo, "commit", "--allow-empty", "-m", "init"]);
+    registry = new Registry(stateDir);
+    worktrees = new Worktrees(repo);
+  });
+
+  afterEach(() => {
+    rmSync(stateDir, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  it("rejects resume on an unknown agent_id", async () => {
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: () => ({}) as unknown as CodexChild,
+      rolesDir,
+      repoRoot: repo,
+    });
+    await expect(orch.resume({ agent_id: "nope", prompt: "continue" })).rejects.toThrow(
+      /not found/,
+    );
+  });
+
+  it("rejects resume on a running agent", async () => {
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: makeCancellableFactory(),
+      rolesDir,
+      repoRoot: repo,
+    });
+    const spawn = await orch.spawn({ role: "reviewer", prompt: "p" });
+    await expect(orch.resume({ agent_id: spawn.agent_id, prompt: "more" })).rejects.toThrow(
+      /running/,
+    );
+    await orch.cancel({ agent_id: spawn.agent_id });
+  });
+
+  it("rejects resume if thread_id is null", async () => {
+    // Agent completed but codex never returned a threadId (edge case)
+    const call = vi.fn().mockResolvedValue({ threadId: "", content: "done", raw: {} });
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: () =>
+        ({
+          start: vi.fn().mockResolvedValue(undefined),
+          call,
+          stop: vi.fn().mockResolvedValue(undefined),
+          get pid() {
+            return 2;
+          },
+        }) as unknown as CodexChild,
+      rolesDir,
+      repoRoot: repo,
+    });
+    const spawn = await orch.spawn({ role: "reviewer", prompt: "p" });
+    await orch.waitForAgent(spawn.agent_id);
+    await expect(orch.resume({ agent_id: spawn.agent_id, prompt: "more" })).rejects.toThrow(
+      /thread_id/,
+    );
+  });
+
+  it("resumes a completed agent via codex-reply with stored thread_id", async () => {
+    const firstCall = vi
+      .fn()
+      .mockResolvedValue({ threadId: "thread-XYZ", content: "initial", raw: {} });
+    const secondCall = vi
+      .fn()
+      .mockResolvedValue({ threadId: "thread-XYZ", content: "followup", raw: {} });
+    let callIndex = 0;
+    const factory = () => {
+      const impl = callIndex++ === 0 ? firstCall : secondCall;
+      return {
+        start: vi.fn().mockResolvedValue(undefined),
+        call: impl,
+        stop: vi.fn().mockResolvedValue(undefined),
+        get pid() {
+          return 9999;
+        },
+      } as unknown as CodexChild;
+    };
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: factory,
+      rolesDir,
+      repoRoot: repo,
+    });
+    const spawn = await orch.spawn({ role: "reviewer", prompt: "first" });
+    await orch.waitForAgent(spawn.agent_id);
+    const resume = await orch.resume({ agent_id: spawn.agent_id, prompt: "continue please" });
+    expect(resume.status).toBe("running");
+    await orch.waitForAgent(spawn.agent_id);
+    const rec = await registry.get(spawn.agent_id);
+    expect(rec!.status).toBe("completed");
+    expect(rec!.last_output).toBe("followup");
+    expect(rec!.thread_id).toBe("thread-XYZ");
+    const secondArgs = secondCall.mock.calls[0][0];
+    expect(secondArgs.thread_id).toBe("thread-XYZ");
+    expect(secondArgs.prompt).toBe("continue please");
+  });
+});
+
+describe("Orchestrator.cancel", () => {
+  let stateDir: string;
+  let repo: string;
+  let registry: Registry;
+  let worktrees: Worktrees;
+
+  beforeEach(async () => {
+    stateDir = mkdtempSync(join(tmpdir(), "orch-can-state-"));
+    repo = mkdtempSync(join(tmpdir(), "orch-can-repo-"));
+    await execa("git", ["-C", repo, "init", "-q", "-b", "main"]);
+    await execa("git", ["-C", repo, "config", "user.email", "t@t"]);
+    await execa("git", ["-C", repo, "config", "user.name", "t"]);
+    await execa("git", ["-C", repo, "commit", "--allow-empty", "-m", "init"]);
+    registry = new Registry(stateDir);
+    worktrees = new Worktrees(repo);
+  });
+
+  afterEach(() => {
+    rmSync(stateDir, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  it("cancels a running agent and marks status=cancelled (not failed)", async () => {
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: makeCancellableFactory(),
+      rolesDir,
+      repoRoot: repo,
+    });
+    const spawn = await orch.spawn({ role: "reviewer", prompt: "long work" });
+    const res = await orch.cancel({ agent_id: spawn.agent_id });
+    expect(res.status).toBe("cancelled");
+    const rec = await registry.get(spawn.agent_id);
+    expect(rec!.status).toBe("cancelled");
+    expect(rec!.error).toBeNull();
+  });
+
+  it("is idempotent on already-terminal agents", async () => {
+    const call = vi.fn().mockResolvedValue({ threadId: "t", content: "done", raw: {} });
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: () =>
+        ({
+          start: vi.fn().mockResolvedValue(undefined),
+          call,
+          stop: vi.fn().mockResolvedValue(undefined),
+          get pid() {
+            return 1;
+          },
+        }) as unknown as CodexChild,
+      rolesDir,
+      repoRoot: repo,
+    });
+    const spawn = await orch.spawn({ role: "reviewer", prompt: "p" });
+    await orch.waitForAgent(spawn.agent_id);
+    const res = await orch.cancel({ agent_id: spawn.agent_id });
+    expect(res.status).toBe("completed"); // stays completed
+    expect(res.worktree_removed).toBe(false);
+  });
+
+  it("removes the worktree when force is true", async () => {
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: makeCancellableFactory(),
+      rolesDir,
+      repoRoot: repo,
+    });
+    const spawn = await orch.spawn({ role: "implementer", prompt: "work" });
+    expect(spawn.worktree_path).not.toBeNull();
+    const res = await orch.cancel({ agent_id: spawn.agent_id, force: true });
+    expect(res.status).toBe("cancelled");
+    expect(res.worktree_removed).toBe(true);
+    const rec = await registry.get(spawn.agent_id);
+    expect(rec!.worktree).toBeNull();
   });
 });

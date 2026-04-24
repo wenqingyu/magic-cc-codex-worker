@@ -2,7 +2,7 @@
 
 > A **Magic Stack** plugin that turns [Codex](https://github.com/openai/codex) into a pool of Claude Code agent workers — spawn, track, resume, and specialize Codex sessions from inside Claude Code.
 
-**Status:** walking skeleton (0.0.1). `spawn` → `status` → `result` works end-to-end against real `codex mcp-server`. `resume`, `cancel`, `merge`, slash commands, subagents, and Magic Flow integration ship in follow-up releases — see [design doc](docs/plans/2026-04-24-magic-cc-codex-worker-design.md) for the full roadmap.
+**Status:** 0.0.2 — `spawn` / `status` / `result` / `resume` / `cancel` / `list` / `get_delegation_policy` all implemented and unit-tested. `merge`, slash commands, subagents, and Magic Flow integration ship in follow-up releases — see [design doc](docs/plans/2026-04-24-magic-cc-codex-worker-design.md) for the full roadmap.
 
 ## Why
 
@@ -58,6 +58,9 @@ Claude discovers the current policy by calling the `get_delegation_policy` MCP t
 | `spawn` | Launch a Codex agent in the background. Returns immediately with `agent_id`. |
 | `status` | Per-agent or all-agents state snapshot + summary counts. |
 | `result` | Full `last_output` of a terminal-state agent. |
+| `resume` | Continue a terminal agent's session via Codex `codex-reply` on the stored `thread_id`. |
+| `cancel` | Kill a running agent's subprocess; mark `cancelled`. `force: true` also removes the worktree. |
+| `list` | Filter agents by role / status / issue_id / has_pr / stale age. |
 | `get_delegation_policy` | Returns the current delegation level + guidance for every level. |
 
 ### Example: spawn a reviewer
@@ -134,8 +137,8 @@ RUN_CODEX_INTEGRATION=1 npm test
 
 Full design and follow-up plans live in [`docs/plans/`](docs/plans/):
 
-1. ✅ Walking skeleton (this release): spawn, status, result, delegation policy
-2. Resume + cancel + list
+1. ✅ Walking skeleton (0.0.1): spawn, status, result, delegation policy
+2. ✅ Session continuity (0.0.2): resume + cancel + list
 3. Merge + discard + slash commands + subagent definitions
 4. Magic Flow integration (Linear, branch conventions, workers.json, hooks)
 5. Dual-model PR review + epic fan-out (the high-value MF features)

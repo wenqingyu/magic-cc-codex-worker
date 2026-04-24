@@ -1,8 +1,14 @@
 import type { Registry } from "./registry.js";
 import type { Worktrees } from "./worktree.js";
-import type { AgentRecord, AgentRole, ApprovalPolicy, SandboxMode } from "./types.js";
-import type { CodexChild } from "./mcp/codex-client.js";
+import type {
+  AgentRecord,
+  AgentRole,
+  ApprovalPolicy,
+  SandboxMode,
+} from "./types.js";
+import type { CodexChild, CodexCallInput } from "./mcp/codex-client.js";
 import { loadRole } from "./roles/loader.js";
+import type { RolePreset } from "./roles/types.js";
 import { renderTemplate } from "./roles/templater.js";
 
 export interface SpawnOverrides {
@@ -30,6 +36,29 @@ export interface SpawnResult {
   role: AgentRole;
 }
 
+export interface ResumeInput {
+  agent_id: string;
+  prompt: string;
+  overrides?: Pick<SpawnOverrides, "timeout_seconds">;
+}
+
+export interface ResumeResult {
+  agent_id: string;
+  status: AgentRecord["status"];
+  role: AgentRole;
+}
+
+export interface CancelInput {
+  agent_id: string;
+  force?: boolean;
+}
+
+export interface CancelResult {
+  agent_id: string;
+  status: AgentRecord["status"];
+  worktree_removed: boolean;
+}
+
 export interface OrchestratorOptions {
   registry: Registry;
   worktrees: Worktrees;
@@ -40,8 +69,20 @@ export interface OrchestratorOptions {
   userGlobalRolesPath?: string;
 }
 
+interface AgentContext {
+  child: CodexChild;
+  cancelRequested: boolean;
+}
+
+const TERMINAL_STATUSES: Array<AgentRecord["status"]> = [
+  "completed",
+  "failed",
+  "cancelled",
+];
+
 export class Orchestrator {
   private readonly tasks = new Map<string, Promise<void>>();
+  private readonly active = new Map<string, AgentContext>();
 
   constructor(private readonly opts: OrchestratorOptions) {}
 
@@ -89,68 +130,21 @@ export class Orchestrator {
       await this.opts.registry.update(rec.agent_id, { cwd, worktree: worktreeInfo });
     }
 
-    const templateCtx: Record<string, string | number | undefined> = {
-      agent_id: rec.agent_id,
-      role: input.role,
-      cwd,
-      worktree_path: worktreeInfo?.path ?? "",
-      branch: worktreeInfo?.branch ?? "",
-      base_ref: worktreeInfo?.base_ref ?? "",
-      issue_id: input.issue_id ?? undefined,
-      pr_number: input.pr_number ?? undefined,
-      mf_conventions: "",
-      pr_context: "",
-    };
+    const instructions = this.buildInstructions(preset, input, rec.agent_id, cwd, worktreeInfo);
 
-    let instructions = renderTemplate(preset.developer_instructions, templateCtx);
-    if (input.overrides?.developer_instructions_replace) {
-      instructions = input.overrides.developer_instructions_replace;
-    } else if (input.overrides?.developer_instructions_append) {
-      instructions += "\n\n" + input.overrides.developer_instructions_append;
-    }
-
-    const child = this.opts.codexFactory();
-    const startedAt = new Date().toISOString();
     await this.opts.registry.update(rec.agent_id, {
       status: "running",
-      started_at: startedAt,
+      started_at: new Date().toISOString(),
     });
 
-    const timeoutMs = preset.timeout_seconds * 1000;
-
-    const task = (async () => {
-      try {
-        await child.start();
-        await this.opts.registry.update(rec.agent_id, { pid: child.pid });
-        const callPromise = child.call({
-          prompt: input.prompt,
-          cwd,
-          model,
-          sandbox: preset.sandbox,
-          approval_policy: preset.approval_policy,
-          developer_instructions: instructions,
-        });
-        const result = await withTimeout(callPromise, timeoutMs);
-        await this.opts.registry.update(rec.agent_id, {
-          status: "completed",
-          thread_id: result.threadId || null,
-          last_output: result.content,
-          ended_at: new Date().toISOString(),
-          pid: null,
-        });
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        await this.opts.registry.update(rec.agent_id, {
-          status: "failed",
-          error: { message },
-          ended_at: new Date().toISOString(),
-          pid: null,
-        });
-      } finally {
-        await child.stop().catch(() => undefined);
-      }
-    })();
-    this.tasks.set(rec.agent_id, task);
+    this.launchBackground(rec.agent_id, preset, {
+      prompt: input.prompt,
+      cwd,
+      model,
+      sandbox: preset.sandbox,
+      approval_policy: preset.approval_policy,
+      developer_instructions: instructions,
+    });
 
     return {
       agent_id: rec.agent_id,
@@ -160,16 +154,173 @@ export class Orchestrator {
     };
   }
 
+  async resume(input: ResumeInput): Promise<ResumeResult> {
+    const rec = await this.opts.registry.get(input.agent_id);
+    if (!rec) throw new Error(`agent ${input.agent_id} not found`);
+    if (!TERMINAL_STATUSES.includes(rec.status)) {
+      throw new Error(`agent ${input.agent_id} is ${rec.status}; can only resume terminal agents`);
+    }
+    if (!rec.thread_id) {
+      throw new Error(
+        `agent ${input.agent_id} has no thread_id; cannot resume (initial session never produced one)`,
+      );
+    }
+
+    const preset = await loadRole(rec.role, {
+      defaultsDir: this.opts.rolesDir,
+      projectCommittedPath: this.opts.projectCommittedRolesPath,
+      userGlobalPath: this.opts.userGlobalRolesPath,
+      overrides: {
+        ...(input.overrides?.timeout_seconds
+          ? { timeout_seconds: input.overrides.timeout_seconds }
+          : {}),
+      },
+    });
+
+    await this.opts.registry.update(rec.agent_id, {
+      status: "running",
+      started_at: new Date().toISOString(),
+      ended_at: null,
+      error: null,
+      last_prompt: input.prompt,
+    });
+
+    this.launchBackground(rec.agent_id, preset, {
+      prompt: input.prompt,
+      cwd: rec.cwd,
+      thread_id: rec.thread_id,
+    });
+
+    return {
+      agent_id: rec.agent_id,
+      status: "running",
+      role: rec.role,
+    };
+  }
+
+  async cancel(input: CancelInput): Promise<CancelResult> {
+    const rec = await this.opts.registry.get(input.agent_id);
+    if (!rec) throw new Error(`agent ${input.agent_id} not found`);
+    if (TERMINAL_STATUSES.includes(rec.status)) {
+      return {
+        agent_id: rec.agent_id,
+        status: rec.status,
+        worktree_removed: false,
+      };
+    }
+    const ctx = this.active.get(input.agent_id);
+    if (ctx) {
+      ctx.cancelRequested = true;
+      await ctx.child.stop().catch(() => undefined);
+    } else {
+      await this.opts.registry.update(rec.agent_id, {
+        status: "cancelled",
+        ended_at: new Date().toISOString(),
+        pid: null,
+      });
+    }
+    await this.waitForAgent(input.agent_id);
+
+    let worktree_removed = false;
+    if (input.force && rec.worktree) {
+      try {
+        await this.opts.worktrees.remove(rec.worktree.path, { delete_branch: true });
+        worktree_removed = true;
+        await this.opts.registry.update(rec.agent_id, { worktree: null });
+      } catch {
+        // best-effort; leave worktree if removal fails
+      }
+    }
+
+    const after = await this.opts.registry.get(rec.agent_id);
+    return {
+      agent_id: rec.agent_id,
+      status: after?.status ?? "cancelled",
+      worktree_removed,
+    };
+  }
+
   async waitForAgent(agent_id: string): Promise<void> {
     const task = this.tasks.get(agent_id);
     if (task) await task;
+  }
+
+  private buildInstructions(
+    preset: RolePreset,
+    input: SpawnInput,
+    agent_id: string,
+    cwd: string,
+    worktree: AgentRecord["worktree"],
+  ): string {
+    const ctx: Record<string, string | number | undefined> = {
+      agent_id,
+      role: input.role,
+      cwd,
+      worktree_path: worktree?.path ?? "",
+      branch: worktree?.branch ?? "",
+      base_ref: worktree?.base_ref ?? "",
+      issue_id: input.issue_id ?? undefined,
+      pr_number: input.pr_number ?? undefined,
+      mf_conventions: "",
+      pr_context: "",
+    };
+    let instructions = renderTemplate(preset.developer_instructions, ctx);
+    if (input.overrides?.developer_instructions_replace) {
+      instructions = input.overrides.developer_instructions_replace;
+    } else if (input.overrides?.developer_instructions_append) {
+      instructions += "\n\n" + input.overrides.developer_instructions_append;
+    }
+    return instructions;
+  }
+
+  private launchBackground(
+    agent_id: string,
+    preset: RolePreset,
+    callInput: CodexCallInput,
+  ): void {
+    const child = this.opts.codexFactory();
+    const ctx: AgentContext = { child, cancelRequested: false };
+    this.active.set(agent_id, ctx);
+    const timeoutMs = preset.timeout_seconds * 1000;
+
+    const task = (async () => {
+      try {
+        await child.start();
+        await this.opts.registry.update(agent_id, { pid: child.pid });
+        const result = await withTimeout(child.call(callInput), timeoutMs);
+        await this.opts.registry.update(agent_id, {
+          status: "completed",
+          thread_id: result.threadId || null,
+          last_output: result.content,
+          ended_at: new Date().toISOString(),
+          pid: null,
+        });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        const finalStatus = ctx.cancelRequested ? "cancelled" : "failed";
+        const patch: Partial<AgentRecord> = {
+          status: finalStatus,
+          ended_at: new Date().toISOString(),
+          pid: null,
+        };
+        if (finalStatus === "failed") patch.error = { message };
+        await this.opts.registry.update(agent_id, patch);
+      } finally {
+        await child.stop().catch(() => undefined);
+        this.active.delete(agent_id);
+      }
+    })();
+    this.tasks.set(agent_id, task);
   }
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   if (!Number.isFinite(ms) || ms <= 0) return p;
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`timeout after ${Math.round(ms / 1000)}s`)), ms);
+    const timer = setTimeout(
+      () => reject(new Error(`timeout after ${Math.round(ms / 1000)}s`)),
+      ms,
+    );
     p.then(
       (v) => {
         clearTimeout(timer);

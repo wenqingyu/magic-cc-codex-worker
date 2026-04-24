@@ -265,4 +265,4 @@ tests/unit/               # 62 个单元测试
 
 [MIT](LICENSE) © magic-cc-codex-worker contributors。
 
-[Magic Stack](https://github.com/magic-stack) 生态的一部分。
+**Magic Stack** 生态的一部分 —— 面向生产级项目的代理自主开发栈。

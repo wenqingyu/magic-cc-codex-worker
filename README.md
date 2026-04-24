@@ -265,4 +265,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Tests required; strict TypeScript; small
 
 [MIT](LICENSE) © magic-cc-codex-worker contributors.
 
-Part of the [Magic Stack](https://github.com/magic-stack) ecosystem.
+Part of **Magic Stack** — an agent-autonomous development stack for production-ready projects.

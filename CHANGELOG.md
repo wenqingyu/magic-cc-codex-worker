@@ -2,6 +2,15 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.4] — 2026-04-24
+
+### Fixed
+- **Subagents were no-ops in practice.** The three shipped subagents (`implementer`, `reviewer`, `planner`) had a `tools:` frontmatter allowlist using the old pre-plugin tool-name form (`mcp__magic-codex__spawn`). Claude Code actually exposes plugin MCP tools under `mcp__plugin_magic-codex_magic-codex__<tool>`, so the allowlist matched zero tools and every subagent invocation returned without doing work. Removed the `tools:` restriction entirely — subagents now inherit the full parent-session tool surface. Protocol body updated to explicitly reference `mcp__plugin_magic-codex_magic-codex__spawn` so callers understand the fully-qualified form.
+- **`spawn` ran git from the wrong directory in multi-repo workspaces.** When Claude Code was launched from a workspace parent (e.g. `/workspace` containing `repo-a/`, `repo-b/`), the MCP server's auto-detected `repoRoot` was that non-repo parent. All `git worktree` ops then failed silently. Added a new `repo_root` parameter to the `spawn` MCP tool — when provided, the Orchestrator constructs a per-spawn `Worktrees` instance at that absolute path, bypassing auto-detect. Backwards-compatible: omitted = old behavior.
+
+### Changed
+- Subagent protocol bodies now instruct callers to always pass `repo_root` (absolute path) in multi-repo workspaces, with examples. Prevents the silent-failure mode reported in 0.3.3.
+
 ## [0.3.3] — 2026-04-24
 
 ### Fixed

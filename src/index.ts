@@ -69,6 +69,7 @@ const SpawnInputZ = z.object({
   issue_id: z.string().optional(),
   pr_number: z.number().optional(),
   base_ref: z.string().optional(),
+  repo_root: z.string().optional(),
   overrides: z
     .object({
       model: z.string().optional(),
@@ -140,7 +141,7 @@ async function main() {
   });
 
   const server = new Server(
-    { name: "magic-codex", version: "0.3.0" },
+    { name: "magic-codex", version: "0.3.4" },
     { capabilities: { tools: {} } },
   );
 
@@ -167,6 +168,11 @@ async function main() {
               type: "string",
               description:
                 "Optional base ref for the worktree branch. Defaults to 'main'. Ignored for roles without worktree.",
+            },
+            repo_root: {
+              type: "string",
+              description:
+                "Absolute path to the git repo root the worker should operate in. When omitted, auto-detected from the MCP server's launch cwd via `git rev-parse --show-toplevel`. REQUIRED in multi-repo workspaces where the server's cwd isn't inside a git repo — otherwise all `git worktree` operations will fail. Example: '/Users/alice/projects/my-app'.",
             },
             overrides: {
               type: "object",

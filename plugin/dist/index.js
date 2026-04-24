@@ -26187,9 +26187,11 @@ var Orchestrator = class {
     });
     const model = preset.model;
     const baseRef = input.base_ref ?? "main";
+    const repoRoot = input.repo_root ?? this.opts.repoRoot;
+    const worktrees = input.repo_root ? new Worktrees(input.repo_root) : this.opts.worktrees;
     const rec = await this.opts.registry.create({
       role: input.role,
-      cwd: this.opts.repoRoot,
+      cwd: repoRoot,
       model: model ?? "(codex default)",
       sandbox: preset.sandbox,
       approval_policy: preset.approval_policy,
@@ -26205,10 +26207,10 @@ var Orchestrator = class {
     if (input.role === "reviewer" && input.pr_number && this.opts.gh) {
       prInfo = await this.opts.gh.getPr(input.pr_number);
     }
-    let cwd = this.opts.repoRoot;
+    let cwd = repoRoot;
     let worktreeInfo = null;
     if (prInfo) {
-      worktreeInfo = await this.opts.worktrees.createDetached({
+      worktreeInfo = await worktrees.createDetached({
         agent_id: rec.agent_id,
         ref: prInfo.headRefOid
       });
@@ -26216,7 +26218,7 @@ var Orchestrator = class {
       await this.opts.registry.update(rec.agent_id, { cwd, worktree: worktreeInfo });
     } else if (preset.worktree) {
       const branch = this.makeBranchName(rec.agent_id, input.issue_id, linearIssue);
-      worktreeInfo = await this.opts.worktrees.create({
+      worktreeInfo = await worktrees.create({
         agent_id: rec.agent_id,
         branch,
         base_ref: baseRef
@@ -27673,6 +27675,7 @@ var SpawnInputZ = external_exports.object({
   issue_id: external_exports.string().optional(),
   pr_number: external_exports.number().optional(),
   base_ref: external_exports.string().optional(),
+  repo_root: external_exports.string().optional(),
   overrides: external_exports.object({
     model: external_exports.string().optional(),
     sandbox: external_exports.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
@@ -27735,7 +27738,7 @@ async function main() {
     mfConventions
   });
   const server = new Server(
-    { name: "magic-codex", version: "0.3.0" },
+    { name: "magic-codex", version: "0.3.4" },
     { capabilities: { tools: {} } }
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -27758,6 +27761,10 @@ async function main() {
             base_ref: {
               type: "string",
               description: "Optional base ref for the worktree branch. Defaults to 'main'. Ignored for roles without worktree."
+            },
+            repo_root: {
+              type: "string",
+              description: "Absolute path to the git repo root the worker should operate in. When omitted, auto-detected from the MCP server's launch cwd via `git rev-parse --show-toplevel`. REQUIRED in multi-repo workspaces where the server's cwd isn't inside a git repo \u2014 otherwise all `git worktree` operations will fail. Example: '/Users/alice/projects/my-app'."
             },
             overrides: {
               type: "object",

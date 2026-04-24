@@ -487,3 +487,79 @@ describe("Orchestrator.merge and discard", () => {
     await orch.cancel({ agent_id: spawn.agent_id });
   });
 });
+
+describe("Orchestrator.spawn — repo_root override", () => {
+  let stateDir: string;
+  let repoA: string;
+  let repoB: string;
+  let registry: Registry;
+  let worktreesA: Worktrees;
+
+  beforeEach(async () => {
+    stateDir = mkdtempSync(join(tmpdir(), "orch-repo-root-state-"));
+    repoA = mkdtempSync(join(tmpdir(), "orch-repo-root-A-"));
+    repoB = mkdtempSync(join(tmpdir(), "orch-repo-root-B-"));
+    for (const r of [repoA, repoB]) {
+      await execa("git", ["-C", r, "init", "-q", "-b", "main"]);
+      await execa("git", ["-C", r, "config", "user.email", "t@t"]);
+      await execa("git", ["-C", r, "config", "user.name", "t"]);
+      await execa("git", ["-C", r, "commit", "--allow-empty", "-m", "init"]);
+    }
+    registry = new Registry(stateDir);
+    worktreesA = new Worktrees(repoA);
+  });
+
+  afterEach(() => {
+    rmSync(stateDir, { recursive: true, force: true });
+    rmSync(repoA, { recursive: true, force: true });
+    rmSync(repoB, { recursive: true, force: true });
+  });
+
+  function okCodexFactory() {
+    return () =>
+      ({
+        start: vi.fn().mockResolvedValue(undefined),
+        call: vi.fn().mockResolvedValue({ threadId: "t-1", content: "done", raw: {} }),
+        stop: vi.fn().mockResolvedValue(undefined),
+        get pid() {
+          return 1;
+        },
+      }) as unknown as CodexChild;
+  }
+
+  it("creates worktree in repo_root (override) when provided, not the orchestrator's default repoRoot", async () => {
+    // Orchestrator configured with repoA as default, but we spawn against repoB
+    const orch = new Orchestrator({
+      registry,
+      worktrees: worktreesA,
+      codexFactory: okCodexFactory(),
+      rolesDir,
+      repoRoot: repoA,
+    });
+    const res = await orch.spawn({
+      role: "implementer",
+      prompt: "work in repo B",
+      repo_root: repoB,
+    });
+    await orch.waitForAgent(res.agent_id);
+    const rec = await registry.get(res.agent_id);
+    // Worktree path must be under repoB, not repoA
+    expect(rec!.worktree?.path.startsWith(repoB)).toBe(true);
+    expect(rec!.worktree?.path.startsWith(repoA)).toBe(false);
+    expect(rec!.cwd.startsWith(repoB)).toBe(true);
+  });
+
+  it("falls back to default repoRoot when repo_root is omitted", async () => {
+    const orch = new Orchestrator({
+      registry,
+      worktrees: worktreesA,
+      codexFactory: okCodexFactory(),
+      rolesDir,
+      repoRoot: repoA,
+    });
+    const res = await orch.spawn({ role: "implementer", prompt: "default" });
+    await orch.waitForAgent(res.agent_id);
+    const rec = await registry.get(res.agent_id);
+    expect(rec!.worktree?.path.startsWith(repoA)).toBe(true);
+  });
+});

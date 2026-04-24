@@ -1,5 +1,5 @@
 import type { Registry } from "./registry.js";
-import type { Worktrees } from "./worktree.js";
+import { Worktrees } from "./worktree.js";
 import type {
   AgentRecord,
   AgentRole,
@@ -30,6 +30,12 @@ export interface SpawnInput {
   issue_id?: string | null;
   pr_number?: number | null;
   base_ref?: string;
+  /** Absolute path to the git repo root the worker should operate in.
+   *  When omitted, falls back to the MCP server's configured repoRoot
+   *  (auto-detected via `git rev-parse --show-toplevel` at startup).
+   *  Required when running in multi-repo workspaces where the MCP
+   *  server's launch cwd isn't a git repo. */
+  repo_root?: string;
   overrides?: SpawnOverrides;
 }
 
@@ -142,9 +148,17 @@ export class Orchestrator {
     const model = preset.model;
     const baseRef = input.base_ref ?? "main";
 
+    // Per-spawn repo root. When caller provides input.repo_root (for multi-repo
+    // workspaces where the MCP server's launch cwd isn't a git repo), use it.
+    // Otherwise fall back to the server's configured repoRoot.
+    const repoRoot = input.repo_root ?? this.opts.repoRoot;
+    const worktrees = input.repo_root
+      ? new Worktrees(input.repo_root)
+      : this.opts.worktrees;
+
     const rec = await this.opts.registry.create({
       role: input.role,
-      cwd: this.opts.repoRoot,
+      cwd: repoRoot,
       model: model ?? "(codex default)",
       sandbox: preset.sandbox,
       approval_policy: preset.approval_policy,
@@ -165,12 +179,12 @@ export class Orchestrator {
       prInfo = await this.opts.gh.getPr(input.pr_number);
     }
 
-    let cwd = this.opts.repoRoot;
+    let cwd = repoRoot;
     let worktreeInfo: AgentRecord["worktree"] = null;
 
     if (prInfo) {
       // PR worktree mode: detached checkout at PR head SHA for read-only review.
-      worktreeInfo = await this.opts.worktrees.createDetached({
+      worktreeInfo = await worktrees.createDetached({
         agent_id: rec.agent_id,
         ref: prInfo.headRefOid,
       });
@@ -178,7 +192,7 @@ export class Orchestrator {
       await this.opts.registry.update(rec.agent_id, { cwd, worktree: worktreeInfo });
     } else if (preset.worktree) {
       const branch = this.makeBranchName(rec.agent_id, input.issue_id, linearIssue);
-      worktreeInfo = await this.opts.worktrees.create({
+      worktreeInfo = await worktrees.create({
         agent_id: rec.agent_id,
         branch,
         base_ref: baseRef,

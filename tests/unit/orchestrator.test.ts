@@ -384,3 +384,106 @@ describe("Orchestrator.cancel", () => {
     expect(rec!.worktree).toBeNull();
   });
 });
+
+describe("Orchestrator.merge and discard", () => {
+  let stateDir: string;
+  let repo: string;
+  let registry: Registry;
+  let worktrees: Worktrees;
+
+  beforeEach(async () => {
+    stateDir = mkdtempSync(join(tmpdir(), "orch-mrg-state-"));
+    repo = mkdtempSync(join(tmpdir(), "orch-mrg-repo-"));
+    await execa("git", ["-C", repo, "init", "-q", "-b", "main"]);
+    await execa("git", ["-C", repo, "config", "user.email", "t@t"]);
+    await execa("git", ["-C", repo, "config", "user.name", "t"]);
+    await execa("git", ["-C", repo, "commit", "--allow-empty", "-m", "init"]);
+    registry = new Registry(stateDir);
+    worktrees = new Worktrees(repo);
+  });
+
+  afterEach(() => {
+    rmSync(stateDir, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  it("merges a completed implementer's worktree into base_ref with squash", async () => {
+    // Factory whose call creates a commit in the worktree before resolving.
+    const factory = () => {
+      const cwdSeen: { cwd?: string } = {};
+      return {
+        start: vi.fn().mockResolvedValue(undefined),
+        call: vi.fn().mockImplementation(async (input: { cwd: string }) => {
+          cwdSeen.cwd = input.cwd;
+          const { writeFileSync } = await import("node:fs");
+          writeFileSync(join(input.cwd, "AGENT_WORK.md"), "agent output\n");
+          await execa("git", ["-C", input.cwd, "add", "AGENT_WORK.md"]);
+          await execa("git", ["-C", input.cwd, "commit", "-m", "agent work"]);
+          return { threadId: "t-1", content: "done", raw: {} };
+        }),
+        stop: vi.fn().mockResolvedValue(undefined),
+        get pid() {
+          return 1;
+        },
+      } as unknown as CodexChild;
+    };
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: factory,
+      rolesDir,
+      repoRoot: repo,
+    });
+    const spawn = await orch.spawn({ role: "implementer", prompt: "do work" });
+    await orch.waitForAgent(spawn.agent_id);
+
+    const res = await orch.merge({ agent_id: spawn.agent_id });
+    expect(res.sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(res.merged_into).toBe("main");
+    expect(res.worktree_removed).toBe(true);
+
+    const { stdout } = await execa("git", ["-C", repo, "log", "--oneline", "-n", "2"]);
+    expect(stdout).toContain("Merge codex agent branch");
+  });
+
+  it("rejects merge on non-completed agents", async () => {
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: makeCancellableFactory(),
+      rolesDir,
+      repoRoot: repo,
+    });
+    const spawn = await orch.spawn({ role: "implementer", prompt: "w" });
+    await expect(orch.merge({ agent_id: spawn.agent_id })).rejects.toThrow(/only completed/);
+    await orch.cancel({ agent_id: spawn.agent_id });
+  });
+
+  it("discards a terminal agent's worktree + branch", async () => {
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: makeCancellableFactory(),
+      rolesDir,
+      repoRoot: repo,
+    });
+    const spawn = await orch.spawn({ role: "implementer", prompt: "w" });
+    await orch.cancel({ agent_id: spawn.agent_id });
+    const res = await orch.discard({ agent_id: spawn.agent_id });
+    expect(res.worktree_removed).toBe(true);
+    expect(res.branch_deleted).toBe(true);
+  });
+
+  it("rejects discard on a still-running agent", async () => {
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: makeCancellableFactory(),
+      rolesDir,
+      repoRoot: repo,
+    });
+    const spawn = await orch.spawn({ role: "implementer", prompt: "w" });
+    await expect(orch.discard({ agent_id: spawn.agent_id })).rejects.toThrow(/cancel first/);
+    await orch.cancel({ agent_id: spawn.agent_id });
+  });
+});

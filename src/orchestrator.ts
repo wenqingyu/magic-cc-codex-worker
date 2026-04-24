@@ -59,6 +59,30 @@ export interface CancelResult {
   worktree_removed: boolean;
 }
 
+export interface MergeInput {
+  agent_id: string;
+  strategy?: "squash" | "ff" | "rebase";
+  message?: string;
+  keep_worktree?: boolean;
+}
+
+export interface MergeResult {
+  agent_id: string;
+  merged_into: string;
+  sha: string;
+  worktree_removed: boolean;
+}
+
+export interface DiscardInput {
+  agent_id: string;
+}
+
+export interface DiscardResult {
+  agent_id: string;
+  worktree_removed: boolean;
+  branch_deleted: boolean;
+}
+
 export interface OrchestratorOptions {
   registry: Registry;
   worktrees: Worktrees;
@@ -238,6 +262,54 @@ export class Orchestrator {
       status: after?.status ?? "cancelled",
       worktree_removed,
     };
+  }
+
+  async merge(input: MergeInput): Promise<MergeResult> {
+    const rec = await this.opts.registry.get(input.agent_id);
+    if (!rec) throw new Error(`agent ${input.agent_id} not found`);
+    if (!rec.worktree) throw new Error(`agent ${input.agent_id} has no worktree to merge`);
+    if (rec.status !== "completed") {
+      throw new Error(
+        `agent ${input.agent_id} is ${rec.status}; only completed agents can be merged`,
+      );
+    }
+    const { sha } = await this.opts.worktrees.merge({
+      branch: rec.worktree.branch,
+      base_ref: rec.worktree.base_ref,
+      strategy: input.strategy,
+      message: input.message,
+    });
+    let worktree_removed = false;
+    if (!input.keep_worktree) {
+      await this.opts.worktrees.remove(rec.worktree.path, { delete_branch: true });
+      worktree_removed = true;
+      await this.opts.registry.update(rec.agent_id, { worktree: null });
+    }
+    return {
+      agent_id: rec.agent_id,
+      merged_into: rec.worktree.base_ref,
+      sha,
+      worktree_removed,
+    };
+  }
+
+  async discard(input: DiscardInput): Promise<DiscardResult> {
+    const rec = await this.opts.registry.get(input.agent_id);
+    if (!rec) throw new Error(`agent ${input.agent_id} not found`);
+    if (!TERMINAL_STATUSES.includes(rec.status)) {
+      throw new Error(
+        `agent ${input.agent_id} is ${rec.status}; cancel first before discarding`,
+      );
+    }
+    let worktree_removed = false;
+    let branch_deleted = false;
+    if (rec.worktree) {
+      await this.opts.worktrees.remove(rec.worktree.path, { delete_branch: true });
+      worktree_removed = true;
+      branch_deleted = true;
+      await this.opts.registry.update(rec.agent_id, { worktree: null });
+    }
+    return { agent_id: rec.agent_id, worktree_removed, branch_deleted };
   }
 
   async waitForAgent(agent_id: string): Promise<void> {

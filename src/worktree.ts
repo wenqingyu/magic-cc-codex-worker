@@ -38,6 +38,31 @@ export class Worktrees {
     };
   }
 
+  async merge(opts: {
+    branch: string;
+    base_ref: string;
+    strategy?: "squash" | "ff" | "rebase";
+    message?: string;
+  }): Promise<{ sha: string }> {
+    const strategy = opts.strategy ?? "squash";
+    // Checkout base_ref in the main repo
+    await execa("git", ["-C", this.repoRoot, "checkout", opts.base_ref]);
+
+    if (strategy === "squash") {
+      await execa("git", ["-C", this.repoRoot, "merge", "--squash", opts.branch]);
+      const message = opts.message ?? `Merge codex agent branch ${opts.branch}`;
+      await execa("git", ["-C", this.repoRoot, "commit", "-m", message]);
+    } else if (strategy === "ff") {
+      await execa("git", ["-C", this.repoRoot, "merge", "--ff-only", opts.branch]);
+    } else if (strategy === "rebase") {
+      await execa("git", ["-C", this.repoRoot, "rebase", opts.base_ref, opts.branch]);
+      await execa("git", ["-C", this.repoRoot, "checkout", opts.base_ref]);
+      await execa("git", ["-C", this.repoRoot, "merge", "--ff-only", opts.branch]);
+    }
+    const { stdout } = await execa("git", ["-C", this.repoRoot, "rev-parse", "HEAD"]);
+    return { sha: stdout.trim() };
+  }
+
   async remove(path: string, opts: { delete_branch?: boolean } = {}): Promise<void> {
     let branch: string | null = null;
     if (opts.delete_branch) {

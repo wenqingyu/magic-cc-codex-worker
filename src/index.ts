@@ -93,6 +93,13 @@ const ListInputZ = z.object({
   has_pr: z.boolean().optional(),
   stale_after_seconds: z.number().optional(),
 });
+const MergeInputZ = z.object({
+  agent_id: z.string(),
+  strategy: z.enum(["squash", "ff", "rebase"]).optional(),
+  message: z.string().optional(),
+  keep_worktree: z.boolean().optional(),
+});
+const DiscardInputZ = z.object({ agent_id: z.string() });
 
 async function main() {
   const repoRoot = await detectRepoRoot();
@@ -237,6 +244,31 @@ async function main() {
         },
       },
       {
+        name: "merge",
+        description:
+          "Merge a completed agent's worktree branch back into its base_ref. Default strategy is squash; ff/rebase also supported. Worktree is removed after successful merge unless keep_worktree=true.",
+        inputSchema: {
+          type: "object",
+          required: ["agent_id"],
+          properties: {
+            agent_id: { type: "string" },
+            strategy: { type: "string", enum: ["squash", "ff", "rebase"] },
+            message: { type: "string", description: "Commit message for squash merges." },
+            keep_worktree: { type: "boolean" },
+          },
+        },
+      },
+      {
+        name: "discard",
+        description:
+          "Remove a terminal agent's worktree and delete its branch. Cancel running agents first.",
+        inputSchema: {
+          type: "object",
+          required: ["agent_id"],
+          properties: { agent_id: { type: "string" } },
+        },
+      },
+      {
         name: "get_delegation_policy",
         description:
           "Return the user's configured delegation policy (minimal/balance/max) and the guidance for each level. CALL THIS AT THE START OF EVERY SESSION where you might spawn Codex agents — the current level tells you how aggressively to offload work from Claude to Codex.",
@@ -337,6 +369,22 @@ async function main() {
       return {
         content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
         structuredContent: payload as unknown as Record<string, unknown>,
+      };
+    }
+    if (name === "merge") {
+      const parsed = MergeInputZ.parse(args);
+      const result = await orch.merge(parsed);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        structuredContent: result as unknown as Record<string, unknown>,
+      };
+    }
+    if (name === "discard") {
+      const parsed = DiscardInputZ.parse(args);
+      const result = await orch.discard(parsed);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        structuredContent: result as unknown as Record<string, unknown>,
       };
     }
     if (name === "get_delegation_policy") {

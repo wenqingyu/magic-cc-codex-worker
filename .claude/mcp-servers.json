@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "codex-team": {
+      "command": "node",
+      "args": ["./dist/index.js"],
+      "env": {
+        "CODEX_TEAM_STATE_DIR": ".codex-team"
+      }
+    },
+    "codex-raw": {
+      "command": "codex",
+      "args": ["mcp-server"]
+    }
+  }
+}

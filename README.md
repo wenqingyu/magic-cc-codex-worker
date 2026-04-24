@@ -5,9 +5,18 @@
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen)](.nvmrc)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](tsconfig.json)
 
+**Languages:** English · [简体中文](README.cn.md)
+
 > A Claude Code plugin that turns **[Codex](https://github.com/openai/codex) into a pool of agent workers** — spawn, track, resume, review, and merge Codex sessions directly from inside Claude Code.
 
-Use cases: run long implementation tasks out-of-process so they don't eat Claude's context • fan out parallel Codex workers on independent subtasks • get a second-opinion GPT review on PRs alongside Claude's review • resume named agents across conversations.
+## Why use this?
+
+- 🎯 **The best way to systematically delegate Codex agents as Claude Code sub-workers.** Not a thin wrapper that just forwards a prompt to a single Codex call — this is a full orchestration layer with role-based specialization, git worktree isolation, resumable sessions, parallel fan-out, and first-class session tracking. Every delegation is tuned, sandboxed, and observable.
+- 💰 **Save and balance your Claude Code quota.** Offload long-running implementation, reviews, and planning to Codex — let Claude stay in orchestrator mode. Your Claude budget goes further; the Codex stack absorbs the grunt work. One knob (`minimal` / `balance` / `max`) controls the split.
+- 🔀 **Two model families beat one.** Spawn a Codex (GPT) reviewer alongside Claude's own review — different models catch different classes of bugs. The plugin materializes PRs in detached git worktrees so the reviewer inspects real files, not a diff blob.
+- 🧰 **Real engineering, not a toy.** 62 unit tests, strict TypeScript, CI on Node 20/22. Designed from an actual spike of Codex's MCP protocol — no stdout parsing, no brittle scraping. Git worktrees for parallelism, MCP protocol for transport, TOML for configuration, sandboxed execution for safety.
+
+**Use cases** — run long implementation tasks out-of-process so they don't eat Claude's context • fan out parallel Codex workers on independent subtasks • get a second-opinion GPT review on PRs alongside Claude's review • resume named agents across conversations.
 
 ---
 

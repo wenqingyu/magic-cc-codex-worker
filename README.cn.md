@@ -22,19 +22,35 @@
 
 ## 快速开始
 
+### 一条提示词完成安装(推荐)
+
+把下面这段话粘贴进任意 Claude Code 会话 —— Claude 会自动克隆、构建、注册并验证插件:
+
+> 请帮我安装 `magic-cc-codex-worker` 插件,仓库地址 `https://github.com/wenqingyu/magic-cc-codex-worker`:
+> 1. 克隆到 `~/.claude/plugins-local/magic-cc-codex-worker`(目录不存在就创建)。
+> 2. `cd` 进去运行 `npm install && npm run build`。
+> 3. 注册:运行 `/plugin marketplace add ~/.claude/plugins-local/magic-cc-codex-worker`。
+> 4. 安装:`/plugin install magic-cc-codex-worker@magic-cc-codex-worker`。
+> 5. 如果提示重启 Claude Code 就重启,然后运行 `/codex-status` 验证(应该返回"没有代理")。在启动真实代理之前,确认 `codex` CLI 已认证(`codex --version` 可成功)。
+
+### 手动安装
+
 ```bash
 # 前置条件: Node 20+、git 2.40+、已认证的 codex CLI
 codex --version          # 任意 0.122.0+ 即可
-which codex mcp-server   # 应打印一个路径
-
-# 安装
-git clone https://github.com/wenqingyu/magic-cc-codex-worker
-cd magic-cc-codex-worker
+git clone https://github.com/wenqingyu/magic-cc-codex-worker ~/.claude/plugins-local/magic-cc-codex-worker
+cd ~/.claude/plugins-local/magic-cc-codex-worker
 npm install && npm run build
-
-# 在 Claude Code 中注册插件目录
-# 然后在任意 git 仓库中的 Claude Code 会话里:
 ```
+
+然后在 Claude Code 会话里:
+
+```
+/plugin marketplace add ~/.claude/plugins-local/magic-cc-codex-worker
+/plugin install magic-cc-codex-worker@magic-cc-codex-worker
+```
+
+### 首次使用
 
 ```
 /codex-spawn implementer "为 /api/upload 添加限流"

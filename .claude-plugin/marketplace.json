@@ -1,0 +1,12 @@
+{
+  "name": "magic-cc-codex-worker",
+  "description": "Orchestrate Codex as Claude Code agent workers.",
+  "plugins": [
+    {
+      "name": "magic-cc-codex-worker",
+      "source": ".",
+      "version": "0.2.0",
+      "description": "Orchestrate Codex as Claude Code agent workers — spawn, track, resume, review, merge Codex sessions from inside Claude Code."
+    }
+  ]
+}

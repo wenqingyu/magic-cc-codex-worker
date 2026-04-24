@@ -22,27 +22,43 @@
 
 ## Quick start
 
+### One-prompt install (recommended)
+
+Paste this into any Claude Code session — Claude will clone, build, register, and verify the plugin end-to-end:
+
+> Install the `magic-cc-codex-worker` plugin from `https://github.com/wenqingyu/magic-cc-codex-worker`:
+> 1. Clone it to `~/.claude/plugins-local/magic-cc-codex-worker` (create the dir if needed).
+> 2. `cd` there and run `npm install && npm run build`.
+> 3. Register it: run `/plugin marketplace add ~/.claude/plugins-local/magic-cc-codex-worker`.
+> 4. Install it: `/plugin install magic-cc-codex-worker@magic-cc-codex-worker`.
+> 5. Restart Claude Code if prompted, then verify by running `/codex-status` (should return "no agents" cleanly). Confirm `codex` CLI is authenticated (`codex --version` succeeds) before spawning real agents.
+
+### Manual install
+
 ```bash
 # Prerequisites: Node 20+, git 2.40+, codex CLI authenticated
 codex --version          # any 0.122.0+ works
-which codex mcp-server   # should print a path
-
-# Install
-git clone https://github.com/wenqingyu/magic-cc-codex-worker
-cd magic-cc-codex-worker
+git clone https://github.com/wenqingyu/magic-cc-codex-worker ~/.claude/plugins-local/magic-cc-codex-worker
+cd ~/.claude/plugins-local/magic-cc-codex-worker
 npm install && npm run build
-
-# Register with Claude Code (plugin directory)
-# Then, from a Claude Code session in any git repo:
 ```
+
+Then in a Claude Code session:
+
+```
+/plugin marketplace add ~/.claude/plugins-local/magic-cc-codex-worker
+/plugin install magic-cc-codex-worker@magic-cc-codex-worker
+```
+
+### First run
 
 ```
 /codex-spawn implementer "Add rate limiting to /api/upload"
 # → returns agent_id, e.g. codex-impl-ab12cd
 
-/codex-status                # see all agents
-/codex-status codex-impl-ab12cd   # single agent
-/codex-merge codex-impl-ab12cd    # merge the worktree back when done
+/codex-status                       # see all agents
+/codex-status codex-impl-ab12cd     # single agent
+/codex-merge codex-impl-ab12cd      # merge the worktree back when done
 ```
 
 That's the whole loop: spawn → poll → merge.

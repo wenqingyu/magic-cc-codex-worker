@@ -26,15 +26,23 @@ export interface CodexCallResult {
 
 export interface CodexChildOptions {
   codexBin?: string;
+  /** Invoked with every stderr chunk emitted by the codex child.
+   *  Attach once at construction time — set before start() so no early
+   *  bytes (seatbelt denial messages during the first tool call) are lost.
+   *  Chunks are raw bytes from the pipe; the callback is responsible for
+   *  decoding / buffering / line-splitting as desired. */
+  onStderr?: (chunk: Buffer) => void;
 }
 
 export class CodexChild {
   private client: Client | null = null;
   private transport: StdioClientTransport | null = null;
   private readonly bin: string;
+  private readonly onStderr?: (chunk: Buffer) => void;
 
   constructor(opts: CodexChildOptions = {}) {
     this.bin = opts.codexBin ?? "codex";
+    this.onStderr = opts.onStderr;
   }
 
   async start(): Promise<void> {
@@ -44,10 +52,18 @@ export class CodexChild {
       stderr: "pipe",
     });
     this.client = new Client(
-      { name: "magic-codex", version: "0.3.7" },
+      { name: "magic-codex", version: "0.3.8" },
       { capabilities: {} },
     );
     await this.client.connect(this.transport);
+    if (this.onStderr && this.transport.stderr) {
+      // SDK exposes a PassThrough when stderr is "pipe" — subscribe now
+      // so we capture sandbox denials and early startup errors.
+      this.transport.stderr.on("data", (chunk: Buffer | string) => {
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+        this.onStderr!(buf);
+      });
+    }
   }
 
   /**

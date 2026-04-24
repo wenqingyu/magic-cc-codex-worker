@@ -25266,6 +25266,11 @@ var Registry = class {
   state = { version: 1, agents: {} };
   loaded = false;
   writeLock = Promise.resolve();
+  /** Returns the state directory root (e.g. `<repo>/.magic-codex`).
+   *  Callers use this to derive sibling paths like `logs/<agent>.stderr`. */
+  get rootDir() {
+    return this.stateDir;
+  }
   get stateFile() {
     return join(this.stateDir, "state.json");
   }
@@ -25427,7 +25432,7 @@ var Worktrees = class {
 };
 
 // src/orchestrator.ts
-import { realpathSync } from "node:fs";
+import { createWriteStream as createWriteStream2, mkdirSync, realpathSync } from "node:fs";
 import { join as join4 } from "node:path";
 
 // src/roles/loader.ts
@@ -26429,14 +26434,39 @@ var Orchestrator = class {
     return instructions;
   }
   launchBackground(agent_id, preset, callInput) {
-    const child = this.opts.codexFactory();
+    let logStream = null;
+    let logPath = null;
+    try {
+      const logDir = join4(this.opts.registry.rootDir, "logs");
+      mkdirSync(logDir, { recursive: true });
+      logPath = join4(logDir, `${agent_id}.codex.stderr`);
+      logStream = createWriteStream2(logPath, { flags: "a" });
+    } catch {
+    }
+    const trace2 = process.env.MAGIC_CODEX_TRACE === "1";
+    const onStderr = (chunk) => {
+      logStream?.write(chunk);
+      if (trace2) {
+        const lines = chunk.toString("utf8").split(/\r?\n/);
+        for (let i2 = 0; i2 < lines.length; i2++) {
+          const line = lines[i2];
+          if (i2 === lines.length - 1 && line === "") continue;
+          process.stderr.write(`[${agent_id}] ${line}
+`);
+        }
+      }
+    };
+    const child = this.opts.codexFactory({ onStderr });
     const ctx = { child, cancelRequested: false };
     this.active.set(agent_id, ctx);
     const timeoutMs = preset.timeout_seconds * 1e3;
     const task = (async () => {
       try {
         await child.start();
-        await this.opts.registry.update(agent_id, { pid: child.pid });
+        await this.opts.registry.update(agent_id, {
+          pid: child.pid,
+          ...logPath ? { stderr_log: logPath } : {}
+        });
         const result = await withTimeout(child.call(callInput, timeoutMs), timeoutMs);
         const completed = await this.opts.registry.update(agent_id, {
           status: "completed",
@@ -26459,6 +26489,7 @@ var Orchestrator = class {
         await this.mirrorWorker(updated);
       } finally {
         await child.stop().catch(() => void 0);
+        logStream?.end();
         this.active.delete(agent_id);
       }
     })();
@@ -27343,8 +27374,10 @@ var CodexChild = class {
   client = null;
   transport = null;
   bin;
+  onStderr;
   constructor(opts = {}) {
     this.bin = opts.codexBin ?? "codex";
+    this.onStderr = opts.onStderr;
   }
   async start() {
     this.transport = new StdioClientTransport({
@@ -27353,10 +27386,16 @@ var CodexChild = class {
       stderr: "pipe"
     });
     this.client = new Client(
-      { name: "magic-codex", version: "0.3.7" },
+      { name: "magic-codex", version: "0.3.8" },
       { capabilities: {} }
     );
     await this.client.connect(this.transport);
+    if (this.onStderr && this.transport.stderr) {
+      this.transport.stderr.on("data", (chunk) => {
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+        this.onStderr(buf);
+      });
+    }
   }
   /**
    * Dispatch a codex tool call.
@@ -27691,7 +27730,8 @@ function agentSummary(rec) {
     started_at: rec.started_at,
     ended_at: rec.ended_at,
     last_output_preview: rec.last_output?.slice(0, 500) ?? null,
-    error_summary: rec.error?.message ?? null
+    error_summary: rec.error?.message ?? null,
+    stderr_log: rec.stderr_log ?? null
   };
 }
 var TRACE = process.env.MAGIC_CODEX_TRACE === "1";
@@ -27785,7 +27825,7 @@ async function main() {
     mfConventions
   });
   const server = new Server(
-    { name: "magic-codex", version: "0.3.7" },
+    { name: "magic-codex", version: "0.3.8" },
     { capabilities: { tools: {} } }
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

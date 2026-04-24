@@ -35,6 +35,12 @@ export class Registry {
 
   constructor(private readonly stateDir: string) {}
 
+  /** Returns the state directory root (e.g. `<repo>/.magic-codex`).
+   *  Callers use this to derive sibling paths like `logs/<agent>.stderr`. */
+  get rootDir(): string {
+    return this.stateDir;
+  }
+
   private get stateFile() {
     return join(this.stateDir, "state.json");
   }

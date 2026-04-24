@@ -35,6 +35,10 @@ export interface AgentRecord {
   last_output: string | null;
   error: AgentError | null;
   pid: number | null;
+  /** Absolute path to the per-agent codex stderr log (sandbox denials,
+   *  startup errors, rate-limit messages). Populated on spawn; absent
+   *  on older records. */
+  stderr_log?: string | null;
 }
 
 export interface RegistrySnapshot {

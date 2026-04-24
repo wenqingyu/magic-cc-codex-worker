@@ -1,4 +1,4 @@
-import { realpathSync } from "node:fs";
+import { createWriteStream, mkdirSync, realpathSync, type WriteStream } from "node:fs";
 import { join } from "node:path";
 import type { Registry } from "./registry.js";
 import { Worktrees } from "./worktree.js";
@@ -8,7 +8,7 @@ import type {
   ApprovalPolicy,
   SandboxMode,
 } from "./types.js";
-import type { CodexChild, CodexCallInput } from "./mcp/codex-client.js";
+import type { CodexChild, CodexCallInput, CodexChildOptions } from "./mcp/codex-client.js";
 import { loadRole } from "./roles/loader.js";
 import type { RolePreset } from "./roles/types.js";
 import { renderTemplate } from "./roles/templater.js";
@@ -98,7 +98,7 @@ export interface DiscardResult {
 export interface OrchestratorOptions {
   registry: Registry;
   worktrees: Worktrees;
-  codexFactory: () => CodexChild;
+  codexFactory: (opts?: CodexChildOptions) => CodexChild;
   rolesDir: string;
   repoRoot: string;
   projectCommittedRolesPath?: string;
@@ -457,7 +457,38 @@ export class Orchestrator {
     preset: RolePreset,
     callInput: CodexCallInput,
   ): void {
-    const child = this.opts.codexFactory();
+    // Per-agent stderr log at <stateDir>/logs/<agent_id>.codex.stderr.
+    // Always-on (cheap, bounded by codex's own output volume); surfaces
+    // sandbox denials, codex startup errors, and model rate-limit
+    // messages that would otherwise vanish. When MAGIC_CODEX_TRACE=1,
+    // chunks are also forwarded to our own stderr with an [agent_id]
+    // prefix so they appear in Claude Code's MCP log.
+    let logStream: WriteStream | null = null;
+    let logPath: string | null = null;
+    try {
+      const logDir = join(this.opts.registry.rootDir, "logs");
+      mkdirSync(logDir, { recursive: true });
+      logPath = join(logDir, `${agent_id}.codex.stderr`);
+      logStream = createWriteStream(logPath, { flags: "a" });
+    } catch {
+      // best-effort; agent still runs if we can't open the log file
+    }
+    const trace = process.env.MAGIC_CODEX_TRACE === "1";
+    const onStderr = (chunk: Buffer): void => {
+      logStream?.write(chunk);
+      if (trace) {
+        // Prefix every line so interleaved output from parallel workers
+        // is still attributable to a single agent.
+        const lines = chunk.toString("utf8").split(/\r?\n/);
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (i === lines.length - 1 && line === "") continue;
+          process.stderr.write(`[${agent_id}] ${line}\n`);
+        }
+      }
+    };
+
+    const child = this.opts.codexFactory({ onStderr });
     const ctx: AgentContext = { child, cancelRequested: false };
     this.active.set(agent_id, ctx);
     const timeoutMs = preset.timeout_seconds * 1000;
@@ -465,7 +496,10 @@ export class Orchestrator {
     const task = (async () => {
       try {
         await child.start();
-        await this.opts.registry.update(agent_id, { pid: child.pid });
+        await this.opts.registry.update(agent_id, {
+          pid: child.pid,
+          ...(logPath ? { stderr_log: logPath } : {}),
+        });
         // Pass timeoutMs to child.call so the MCP SDK uses it for the
         // underlying JSON-RPC RequestTimeout. Without this, the SDK's
         // 60s default fires for every role regardless of preset.timeout_seconds.
@@ -492,6 +526,7 @@ export class Orchestrator {
         await this.mirrorWorker(updated);
       } finally {
         await child.stop().catch(() => undefined);
+        logStream?.end();
         this.active.delete(agent_id);
       }
     })();

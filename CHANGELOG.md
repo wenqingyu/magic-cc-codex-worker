@@ -2,6 +2,19 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.8] — 2026-04-25
+
+### Added
+- **Per-agent codex stderr capture.** Every spawn now tees the codex child's stderr to `<stateDir>/logs/<agent_id>.codex.stderr` (always on, best-effort) and records the path on the agent as `stderr_log`, surfaced by both `status` and `result`. When `MAGIC_CODEX_TRACE=1` is set, chunks are also forwarded to the plugin's own stderr prefixed with `[<agent_id>]`, so interleaved parallel output stays attributable.
+
+### Why
+- 0.3.7 canonicalized `writable_roots` via `realpathSync`, but batch-50 still reported 50% HEAD.lock denials. That rules out the canonical-path hypothesis. The next step needs ground truth rather than another guess: codex logs sandbox denials to stderr with the exact rejected path, which will pinpoint whether the block is seatbelt (and which path mismatched) or something else entirely — codex's own escalation-policy gating, git concurrency on shared `.git/objects` and `packed-refs`, or a kernel-level file lock contention between workers. After the next batch, read `<stateDir>/logs/*.codex.stderr` on the failing agents and we'll know.
+
+### Changed
+- `CodexChildOptions` grows an optional `onStderr(chunk: Buffer) => void`. `codexFactory` in `OrchestratorOptions` now accepts (still optional) options, so custom factories can opt in. Backwards-compatible — existing factories that ignore the arg keep working.
+- `Registry` exposes a `rootDir` getter (read-only) so callers can derive sibling paths like the logs directory.
+- `AgentRecord` gains `stderr_log?: string | null`. Old records without the field continue to load.
+
 ## [0.3.7] — 2026-04-25
 
 ### Fixed

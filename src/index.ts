@@ -48,6 +48,7 @@ function agentSummary(rec: AgentRecord) {
     ended_at: rec.ended_at,
     last_output_preview: rec.last_output?.slice(0, 500) ?? null,
     error_summary: rec.error?.message ?? null,
+    stderr_log: rec.stderr_log ?? null,
   };
 }
 
@@ -161,7 +162,7 @@ async function main() {
   });
 
   const server = new Server(
-    { name: "magic-codex", version: "0.3.7" },
+    { name: "magic-codex", version: "0.3.8" },
     { capabilities: { tools: {} } },
   );
 

@@ -215,6 +215,41 @@ describe("Orchestrator.spawn", () => {
     expect(passed.writable_roots).toEqual([realpathSync(`${repo}/.git`)]);
   });
 
+  it("captures codex stderr to <stateDir>/logs/<agent_id>.codex.stderr and records the path on the agent", async () => {
+    // 0.3.8 diagnostic: capture sandbox-denial messages and codex
+    // startup errors that would otherwise vanish with the child process.
+    let capturedOnStderr: ((chunk: Buffer) => void) | undefined;
+    const factory = (opts?: { onStderr?: (chunk: Buffer) => void }) => {
+      capturedOnStderr = opts?.onStderr;
+      return {
+        start: vi.fn().mockImplementation(async () => {
+          // Simulate codex emitting a seatbelt denial during startup.
+          capturedOnStderr?.(Buffer.from("sandbox: write blocked at /some/path\n"));
+        }),
+        call: vi.fn().mockResolvedValue({ threadId: "t", content: "", raw: {} }),
+        stop: vi.fn().mockResolvedValue(undefined),
+        get pid() {
+          return 4242;
+        },
+      } as unknown as CodexChild;
+    };
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: factory,
+      rolesDir,
+      repoRoot: repo,
+    });
+    const res = await orch.spawn({ role: "implementer", prompt: "p" });
+    await orch.waitForAgent(res.agent_id);
+    expect(capturedOnStderr).toBeDefined();
+    const rec = await registry.get(res.agent_id);
+    expect(rec!.stderr_log).toMatch(/logs\/codex-impl-[^/]+\.codex\.stderr$/);
+    const { readFileSync } = await import("node:fs");
+    const logContents = readFileSync(rec!.stderr_log!, "utf8");
+    expect(logContents).toContain("sandbox: write blocked at /some/path");
+  });
+
   it("omits writable_roots for read-only roles (reviewer without PR)", async () => {
     const call = vi.fn().mockResolvedValue({ threadId: "t", content: "", raw: {} });
     const orch = new Orchestrator({

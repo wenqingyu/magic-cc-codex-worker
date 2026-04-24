@@ -1,6 +1,6 @@
 {
   "name": "magic-cc-codex-worker",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Parallel Codex workers inside Claude Code — multi-agent orchestration.",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",

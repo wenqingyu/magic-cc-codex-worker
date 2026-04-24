@@ -26431,7 +26431,7 @@ var Orchestrator = class {
       try {
         await child.start();
         await this.opts.registry.update(agent_id, { pid: child.pid });
-        const result = await withTimeout(child.call(callInput), timeoutMs);
+        const result = await withTimeout(child.call(callInput, timeoutMs), timeoutMs);
         const completed = await this.opts.registry.update(agent_id, {
           status: "completed",
           thread_id: result.threadId || null,
@@ -27344,7 +27344,18 @@ var CodexChild = class {
     );
     await this.client.connect(this.transport);
   }
-  async call(input) {
+  /**
+   * Dispatch a codex tool call.
+   *
+   * @param input  The arguments for the codex / codex-reply tool.
+   * @param timeoutMs  Per-call timeout in milliseconds. Passed to the MCP
+   *   SDK's `options.timeout`. Required for any call expected to exceed
+   *   the SDK's built-in 60s default (which fires as `-32001: Request
+   *   timed out` — independent of any caller-side wrapper).
+   *   `resetTimeoutOnProgress` is enabled so long-running codex runs
+   *   that emit progress notifications don't expire mid-stream.
+   */
+  async call(input, timeoutMs) {
     if (!this.client) throw new Error("CodexChild.start() not called");
     const toolName = input.thread_id ? "codex-reply" : "codex";
     const args = input.thread_id ? { threadId: input.thread_id, prompt: input.prompt } : {
@@ -27355,7 +27366,11 @@ var CodexChild = class {
       ...input.approval_policy ? { "approval-policy": input.approval_policy } : {},
       ...input.developer_instructions ? { "developer-instructions": input.developer_instructions } : {}
     };
-    const result = await this.client.callTool({ name: toolName, arguments: args });
+    const result = await this.client.callTool(
+      { name: toolName, arguments: args },
+      void 0,
+      timeoutMs && timeoutMs > 0 ? { timeout: timeoutMs, resetTimeoutOnProgress: true } : void 0
+    );
     return parseCodexResult(result);
   }
   async stop() {
@@ -27738,7 +27753,7 @@ async function main() {
     mfConventions
   });
   const server = new Server(
-    { name: "magic-codex", version: "0.3.4" },
+    { name: "magic-codex", version: "0.3.5" },
     { capabilities: { tools: {} } }
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

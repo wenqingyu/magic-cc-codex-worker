@@ -169,6 +169,30 @@ describe("Orchestrator.spawn", () => {
     expect(rec!.cwd).toBe(repo);
   });
 
+  it("passes the per-role timeoutMs through to child.call (not just the outer wrapper)", async () => {
+    // Bug 0.3.5 fix: MCP SDK had a 60s default Request timeout that fired
+    // before our Node-level withTimeout wrapper, killing every long codex
+    // run. Confirm the timeoutMs argument is now threaded through.
+    const call = vi.fn().mockResolvedValue({ threadId: "t", content: "", raw: {} });
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: mockCodexFactory(call),
+      rolesDir,
+      repoRoot: repo,
+    });
+    const res = await orch.spawn({
+      role: "generic",
+      prompt: "p",
+      overrides: { timeout_seconds: 1234 },
+    });
+    await orch.waitForAgent(res.agent_id);
+    expect(call).toHaveBeenCalledTimes(1);
+    // 2nd arg to child.call is the timeoutMs — must equal 1234 * 1000
+    const secondArg = call.mock.calls[0][1];
+    expect(secondArg).toBe(1234 * 1000);
+  });
+
   it("applies developer_instructions_append override", async () => {
     const call = vi.fn().mockResolvedValue({ threadId: "t", content: "", raw: {} });
     const orch = new Orchestrator({

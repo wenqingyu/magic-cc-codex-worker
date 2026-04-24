@@ -141,7 +141,7 @@ async function main() {
   });
 
   const server = new Server(
-    { name: "magic-codex", version: "0.3.4" },
+    { name: "magic-codex", version: "0.3.5" },
     { capabilities: { tools: {} } },
   );
 

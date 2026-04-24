@@ -44,7 +44,18 @@ export class CodexChild {
     await this.client.connect(this.transport);
   }
 
-  async call(input: CodexCallInput): Promise<CodexCallResult> {
+  /**
+   * Dispatch a codex tool call.
+   *
+   * @param input  The arguments for the codex / codex-reply tool.
+   * @param timeoutMs  Per-call timeout in milliseconds. Passed to the MCP
+   *   SDK's `options.timeout`. Required for any call expected to exceed
+   *   the SDK's built-in 60s default (which fires as `-32001: Request
+   *   timed out` — independent of any caller-side wrapper).
+   *   `resetTimeoutOnProgress` is enabled so long-running codex runs
+   *   that emit progress notifications don't expire mid-stream.
+   */
+  async call(input: CodexCallInput, timeoutMs?: number): Promise<CodexCallResult> {
     if (!this.client) throw new Error("CodexChild.start() not called");
     const toolName = input.thread_id ? "codex-reply" : "codex";
     const args: Record<string, unknown> = input.thread_id
@@ -59,7 +70,13 @@ export class CodexChild {
             ? { "developer-instructions": input.developer_instructions }
             : {}),
         };
-    const result = await this.client.callTool({ name: toolName, arguments: args });
+    const result = await this.client.callTool(
+      { name: toolName, arguments: args },
+      undefined,
+      timeoutMs && timeoutMs > 0
+        ? { timeout: timeoutMs, resetTimeoutOnProgress: true }
+        : undefined,
+    );
     return parseCodexResult(result);
   }
 

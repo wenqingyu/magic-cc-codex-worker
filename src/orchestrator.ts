@@ -447,7 +447,11 @@ export class Orchestrator {
       try {
         await child.start();
         await this.opts.registry.update(agent_id, { pid: child.pid });
-        const result = await withTimeout(child.call(callInput), timeoutMs);
+        // Pass timeoutMs to child.call so the MCP SDK uses it for the
+        // underlying JSON-RPC RequestTimeout. Without this, the SDK's
+        // 60s default fires for every role regardless of preset.timeout_seconds.
+        // The outer withTimeout is kept as a belt-and-suspenders safeguard.
+        const result = await withTimeout(child.call(callInput, timeoutMs), timeoutMs);
         const completed = await this.opts.registry.update(agent_id, {
           status: "completed",
           thread_id: result.threadId || null,

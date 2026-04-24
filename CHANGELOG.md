@@ -2,6 +2,14 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.5] — 2026-04-24
+
+### Fixed
+- **Every codex call > 60 s silently died with `MCP error -32001: Request timed out`.** Root cause: `CodexChild.call` never passed a `timeout` option to `client.callTool`, so the `@modelcontextprotocol/sdk` default 60-second `RequestTimeout` fired long before the orchestrator's per-role `withTimeout` wrapper. Every `implementer` run terminated at `ended_at − started_at ≈ 60s`, with the outer node-level wrapper never getting a chance. Fix: thread `timeoutMs` from the role preset (implementer = 1800s, reviewer = 600s, planner/generic = 900s — or per-spawn override) into `client.callTool`'s `options.timeout`. Also set `resetTimeoutOnProgress: true` so long-running codex sessions that emit progress notifications don't expire mid-stream. New unit test locks in the pass-through.
+
+### Note (user config, not a plugin bug)
+If your codex runs still fail fast with `The model "gpt-5.5" does not exist or you do not have access to it`, that's `~/.codex/config.toml` — `gpt-5.5` isn't a real model. Pick a real one (`gpt-5`, `gpt-5-codex`, etc.) or override per-role via `magic-codex.toml`.
+
 ## [0.3.4] — 2026-04-24
 
 ### Fixed

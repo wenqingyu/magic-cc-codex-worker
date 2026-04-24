@@ -9,7 +9,7 @@ const defaultsDir = resolve(process.cwd(), "src", "roles", "defaults");
 describe("loadRole — built-in defaults", () => {
   it("loads implementer role", async () => {
     const role = await loadRole("implementer", { defaultsDir });
-    expect(role.model).toBe("gpt-5.2-codex");
+    expect(role.model).toBeUndefined(); // inherits codex default unless overridden
     expect(role.sandbox).toBe("workspace-write");
     expect(role.worktree).toBe(true);
     expect(role.timeout_seconds).toBe(1800);
@@ -64,6 +64,6 @@ timeout_seconds = 9999
       projectCommittedPath: join(tmp, "nonexistent.toml"),
       userGlobalPath: join(tmp, "also-missing.toml"),
     });
-    expect(role.model).toBe("gpt-5.2-codex");
+    expect(role.model).toBeUndefined();
   });
 });

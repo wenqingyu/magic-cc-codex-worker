@@ -1,5 +1,5 @@
 [role]
-model = "gpt-5.2"
+# model omitted — inherits Codex default.
 sandbox = "read-only"
 approval_policy = "never"
 worktree = false

@@ -1,23 +1,25 @@
-# Sample project-level config for magic-cc-codex-worker.
-# Copy to codex-team.toml (commit it, team-wide conventions) to activate.
-# Per-user overrides live at ~/.codex-team/config.toml.
+# magic-cc-codex-worker — project config
+# Copy to `codex-team.toml` at your repo root (commit it for team-wide conventions).
+# Per-user overrides live at `~/.codex-team/config.toml`.
 
-[delegation]
-# How aggressively Claude should offload work to Codex.
+# --- Delegation policy ---
+# How aggressively should Claude offload work to Codex?
 # Values: "minimal" | "balance" | "max"
+[delegation]
 level = "balance"
 
-# Role preset overrides. Each field is optional; omitted fields fall back
-# to built-in defaults in src/roles/defaults/*.toml.
+# --- Role overrides ---
+# Only specified fields override the built-in defaults.
+# See src/roles/defaults/*.toml for the full defaults.
 
 # [roles.implementer]
-# model = "gpt-5.2-codex"
+# model = "gpt-5-codex"         # override to pin a specific Codex model
 # timeout_seconds = 1800
 # sandbox = "workspace-write"
 
 # [roles.reviewer]
-# model = "gpt-5.2"
-# timeout_seconds = 600
+# model = "gpt-5"               # force a strong reasoning model for dual-review
+# timeout_seconds = 900
 
 # [roles.planner]
-# model = "gpt-5.2"
+# model = "gpt-5"

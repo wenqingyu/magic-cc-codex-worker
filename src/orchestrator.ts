@@ -137,13 +137,15 @@ export class Orchestrator {
       },
     });
 
-    const model = preset.model ?? "gpt-5.2-codex";
+    // preset.model may be undefined — we pass it through and let codex mcp-server
+    // use its own configured default. Override via codex-team.toml or overrides.model.
+    const model = preset.model;
     const baseRef = input.base_ref ?? "main";
 
     const rec = await this.opts.registry.create({
       role: input.role,
       cwd: this.opts.repoRoot,
-      model,
+      model: model ?? "(codex default)",
       sandbox: preset.sandbox,
       approval_policy: preset.approval_policy,
       last_prompt: input.prompt,

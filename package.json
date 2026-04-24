@@ -9,7 +9,7 @@
     "codex-team-mcp": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc && cp -r src/roles/defaults dist/roles/defaults",
+    "build": "tsc && rm -rf dist/roles/defaults && mkdir -p dist/roles && cp -r src/roles/defaults dist/roles/defaults",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",

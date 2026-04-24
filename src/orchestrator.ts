@@ -10,6 +10,9 @@ import type { CodexChild, CodexCallInput } from "./mcp/codex-client.js";
 import { loadRole } from "./roles/loader.js";
 import type { RolePreset } from "./roles/types.js";
 import { renderTemplate } from "./roles/templater.js";
+import type { MfContext } from "./mf/detect.js";
+import type { LinearClient, LinearIssue } from "./mf/linear.js";
+import type { WorkersMirror } from "./mf/workers.js";
 
 export interface SpawnOverrides {
   model?: string;
@@ -91,6 +94,11 @@ export interface OrchestratorOptions {
   repoRoot: string;
   projectCommittedRolesPath?: string;
   userGlobalRolesPath?: string;
+  mf?: MfContext;
+  linear?: LinearClient;
+  workersMirror?: WorkersMirror;
+  /** Magic Flow conventions text to inject into developer_instructions. */
+  mfConventions?: string;
 }
 
 interface AgentContext {
@@ -141,10 +149,16 @@ export class Orchestrator {
       pr_number: input.pr_number ?? null,
     });
 
+    // Optional Linear issue enrichment (MF mode)
+    let linearIssue: LinearIssue | null = null;
+    if (input.issue_id && this.opts.mf?.detected && this.opts.linear?.isConfigured) {
+      linearIssue = await this.opts.linear.getIssue(input.issue_id);
+    }
+
     let cwd = this.opts.repoRoot;
     let worktreeInfo: AgentRecord["worktree"] = null;
     if (preset.worktree) {
-      const branch = `codex/${rec.agent_id.replace(/^codex-/, "")}`;
+      const branch = this.makeBranchName(rec.agent_id, input.issue_id, linearIssue);
       worktreeInfo = await this.opts.worktrees.create({
         agent_id: rec.agent_id,
         branch,
@@ -154,12 +168,20 @@ export class Orchestrator {
       await this.opts.registry.update(rec.agent_id, { cwd, worktree: worktreeInfo });
     }
 
-    const instructions = this.buildInstructions(preset, input, rec.agent_id, cwd, worktreeInfo);
+    const instructions = this.buildInstructions(
+      preset,
+      input,
+      rec.agent_id,
+      cwd,
+      worktreeInfo,
+      linearIssue,
+    );
 
-    await this.opts.registry.update(rec.agent_id, {
+    const running = await this.opts.registry.update(rec.agent_id, {
       status: "running",
       started_at: new Date().toISOString(),
     });
+    await this.mirrorWorker(running);
 
     this.launchBackground(rec.agent_id, preset, {
       prompt: input.prompt,
@@ -176,6 +198,27 @@ export class Orchestrator {
       worktree_path: worktreeInfo?.path ?? null,
       role: input.role,
     };
+  }
+
+  private makeBranchName(
+    agent_id: string,
+    issue_id?: string | null,
+    linearIssue?: LinearIssue | null,
+  ): string {
+    if (this.opts.mf?.detected && issue_id) {
+      const slug = slugify(linearIssue?.title ?? issue_id);
+      return `feature/${issue_id}-${slug}`;
+    }
+    return `codex/${agent_id.replace(/^codex-/, "")}`;
+  }
+
+  private async mirrorWorker(rec: AgentRecord): Promise<void> {
+    if (!this.opts.workersMirror) return;
+    try {
+      await this.opts.workersMirror.upsertFromRecord(rec);
+    } catch {
+      // best-effort; never fail the agent if registry mirror fails
+    }
   }
 
   async resume(input: ResumeInput): Promise<ResumeResult> {
@@ -323,6 +366,7 @@ export class Orchestrator {
     agent_id: string,
     cwd: string,
     worktree: AgentRecord["worktree"],
+    linearIssue: LinearIssue | null,
   ): string {
     const ctx: Record<string, string | number | undefined> = {
       agent_id,
@@ -333,7 +377,10 @@ export class Orchestrator {
       base_ref: worktree?.base_ref ?? "",
       issue_id: input.issue_id ?? undefined,
       pr_number: input.pr_number ?? undefined,
-      mf_conventions: "",
+      mf_conventions: this.opts.mfConventions ?? "",
+      issue_title: linearIssue?.title ?? "",
+      issue_description: linearIssue?.description ?? "",
+      issue_url: linearIssue?.url ?? "",
       pr_context: "",
     };
     let instructions = renderTemplate(preset.developer_instructions, ctx);
@@ -360,13 +407,14 @@ export class Orchestrator {
         await child.start();
         await this.opts.registry.update(agent_id, { pid: child.pid });
         const result = await withTimeout(child.call(callInput), timeoutMs);
-        await this.opts.registry.update(agent_id, {
+        const completed = await this.opts.registry.update(agent_id, {
           status: "completed",
           thread_id: result.threadId || null,
           last_output: result.content,
           ended_at: new Date().toISOString(),
           pid: null,
         });
+        await this.mirrorWorker(completed);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         const finalStatus = ctx.cancelRequested ? "cancelled" : "failed";
@@ -376,7 +424,8 @@ export class Orchestrator {
           pid: null,
         };
         if (finalStatus === "failed") patch.error = { message };
-        await this.opts.registry.update(agent_id, patch);
+        const updated = await this.opts.registry.update(agent_id, patch);
+        await this.mirrorWorker(updated);
       } finally {
         await child.stop().catch(() => undefined);
         this.active.delete(agent_id);
@@ -384,6 +433,14 @@ export class Orchestrator {
     })();
     this.tasks.set(agent_id, task);
   }
+}
+
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 40);
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {

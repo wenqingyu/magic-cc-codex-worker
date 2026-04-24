@@ -15,6 +15,10 @@ import { Worktrees } from "./worktree.js";
 import { Orchestrator } from "./orchestrator.js";
 import { CodexChild } from "./mcp/codex-client.js";
 import { resolveDelegationPolicy } from "./delegation.js";
+import { detectMf } from "./mf/detect.js";
+import { readMfConventions } from "./mf/conventions.js";
+import { LinearClient } from "./mf/linear.js";
+import { WorkersMirror } from "./mf/workers.js";
 import type { AgentRecord } from "./types.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -112,6 +116,12 @@ async function main() {
 
   const registry = new Registry(stateDir);
   const worktrees = new Worktrees(repoRoot);
+  const mf = detectMf(repoRoot);
+  const mfConventions = mf.detected ? await readMfConventions() : "";
+  const linear = mf.detected ? new LinearClient() : undefined;
+  const workersMirror = mf.detected && mf.has_workers_json
+    ? new WorkersMirror(repoRoot)
+    : undefined;
   const orch = new Orchestrator({
     registry,
     worktrees,
@@ -120,6 +130,10 @@ async function main() {
     repoRoot,
     projectCommittedRolesPath: projectConfigPath,
     userGlobalRolesPath: userConfigPath,
+    mf,
+    linear,
+    workersMirror,
+    mfConventions,
   });
 
   const server = new Server(

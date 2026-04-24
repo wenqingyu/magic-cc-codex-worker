@@ -1,6 +1,6 @@
 {
   "name": "magic-cc-codex-worker",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Claude Code plugin that orchestrates Codex as agent workers",
   "private": true,
   "type": "module",
@@ -9,12 +9,12 @@
     "codex-team-mcp": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc && rm -rf dist/roles/defaults && mkdir -p dist/roles && cp -r src/roles/defaults dist/roles/defaults",
+    "build": "tsc && rm -rf plugin/dist/roles/defaults && mkdir -p plugin/dist/roles && cp -r src/roles/defaults plugin/dist/roles/defaults",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf plugin/dist"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",

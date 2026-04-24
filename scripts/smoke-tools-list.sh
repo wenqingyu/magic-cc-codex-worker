@@ -3,12 +3,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-if [ ! -f dist/index.js ]; then
-  echo "dist/index.js missing; run 'npm run build' first." >&2
+if [ ! -f plugin/dist/index.js ]; then
+  echo "plugin/dist/index.js missing; run 'npm run build' first." >&2
   exit 1
 fi
 
-node dist/index.js 2>/dev/null <<'EOF' | node -e '
+node plugin/dist/index.js 2>/dev/null <<'EOF' | node -e '
   let buf = "";
   process.stdin.on("data", (d) => buf += d);
   process.stdin.on("end", () => {

@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ES2022"],
-    "outDir": "dist",
+    "outDir": "plugin/dist",
     "rootDir": "src",
     "strict": true,
     "esModuleInterop": true,
@@ -18,5 +18,5 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "tests"]
+  "exclude": ["node_modules", "plugin/dist", "tests"]
 }

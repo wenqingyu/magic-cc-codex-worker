@@ -2,6 +2,16 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.4] — 2026-04-24
+
+### Fixed
+- **Critical (root-cause fix):** Claude Code's plugin installer auto-rewrites any `github.com` URL in a plugin `source` to the SSH form `git@github.com:owner/repo.git`, regardless of whether we specified HTTPS. This broke 0.2.3's `{ source: "url", url: "https://..." }` install for users without GitHub SSH keys. Fixed by restructuring the repo so the plugin sits in a `./plugin` subdirectory and the marketplace references it via `"source": "./plugin"`. Claude Code then uses the already-cloned marketplace copy — no second clone, no SSH, no auth issue.
+
+### Changed
+- **Repo layout.** Plugin assets live under `plugin/`: `plugin/.claude-plugin/plugin.json`, `plugin/.mcp.json`, `plugin/commands/`, `plugin/agents/`, `plugin/dist/`. Source/tests/docs stay at repo root for developers. `.claude-plugin/marketplace.json` at repo root points at `./plugin`.
+- TypeScript `outDir` and build script output into `plugin/dist/` instead of root `dist/`.
+- CI drift check, smoke script, and `.gitignore` updated for the new path.
+
 ## [0.2.3] — 2026-04-24
 
 ### Fixed

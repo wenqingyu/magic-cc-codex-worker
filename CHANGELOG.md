@@ -2,6 +2,14 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.3] — 2026-04-24
+
+### Fixed
+- **Critical:** The `magic-codex` MCP server was never starting when Claude Code launched it. Root cause: `.mcp.json` used a relative path `./dist/index.js`, and Claude Code doesn't spawn MCP servers with the plugin directory as cwd — so the path wouldn't resolve. Fixed by using `${CLAUDE_PLUGIN_ROOT}/dist/index.js` (the absolute-path env var Claude Code exports to MCP subprocesses). Both MCP servers (`magic-codex` + `codex-raw`) now start correctly, and the 9 custom tools (spawn/status/result/...) are actually callable.
+
+### Changed
+- **`/magic-codex:mode` now writes to user-global config by default** (`~/.magic-codex/config.toml`), matching user expectations of "set the delegation level for my Claude Code globally." The previous project-scoped behavior is still available with the explicit `--project` flag, which requires being in a git repo (error if not). This prevents accidental config writes to the current working directory when the cwd isn't a real project.
+
 ## [0.3.2] — 2026-04-24
 
 ### Fixed

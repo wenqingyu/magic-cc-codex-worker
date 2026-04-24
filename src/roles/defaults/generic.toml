@@ -1,0 +1,7 @@
+[role]
+model = "gpt-5.2"
+sandbox = "read-only"
+approval_policy = "never"
+worktree = false
+timeout_seconds = 900
+developer_instructions = ""

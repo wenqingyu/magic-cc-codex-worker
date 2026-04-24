@@ -2,6 +2,11 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.3] — 2026-04-24
+
+### Fixed
+- **Critical:** Plugin install failed with `git@github.com: Permission denied (publickey)` on any user without GitHub SSH keys configured. Root cause: the `github` source type in `marketplace.json` clones via SSH (`git@github.com:owner/repo.git`). Switched to the `url` source type with an explicit HTTPS URL (`https://github.com/wenqingyu/magic-cc-codex-worker.git`), which works for everyone regardless of SSH setup.
+
 ## [0.2.2] — 2026-04-24
 
 ### Fixed

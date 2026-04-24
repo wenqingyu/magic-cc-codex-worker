@@ -4,26 +4,26 @@
     "name": "Wenqing Yu"
   },
   "metadata": {
-    "description": "Orchestrate Codex as Claude Code agent workers.",
-    "version": "0.2.2"
+    "description": "Parallel Codex workers inside Claude Code.",
+    "version": "0.2.3"
   },
   "plugins": [
     {
       "name": "magic-cc-codex-worker",
       "source": {
-        "source": "github",
-        "repo": "wenqingyu/magic-cc-codex-worker"
+        "source": "url",
+        "url": "https://github.com/wenqingyu/magic-cc-codex-worker.git"
       },
-      "description": "Orchestrate Codex as Claude Code agent workers — spawn, track, resume, review, merge Codex sessions from inside Claude Code.",
-      "version": "0.2.2",
+      "description": "Parallel Codex workers inside Claude Code — multi-agent orchestration with git worktree isolation, resumable sessions, and dual-model PR review.",
+      "version": "0.2.3",
       "author": {
         "name": "Wenqing Yu"
       },
       "homepage": "https://github.com/wenqingyu/magic-cc-codex-worker",
       "license": "MIT",
-      "keywords": ["codex", "mcp", "agent", "claude-code"],
+      "keywords": ["codex", "mcp", "agent", "claude-code", "multi-agent", "parallel"],
       "category": "development",
-      "tags": ["codex", "mcp", "agent", "orchestration", "claude-code"]
+      "tags": ["codex", "mcp", "multi-agent", "parallel", "orchestration", "claude-code"]
     }
   ]
 }

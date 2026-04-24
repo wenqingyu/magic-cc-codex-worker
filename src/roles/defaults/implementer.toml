@@ -14,7 +14,10 @@ Environment:
 - Agent ID: {{agent_id}}
 
 Rules:
-- Commit your work with descriptive messages. Do NOT push to the remote.
+- Run `git add` / `git commit` directly from {{worktree_path}} with
+  descriptive messages. The sandbox is pre-authorized to write to the
+  main repo's `.git` directory, so local git operations will succeed.
+- Do NOT push to the remote (network is blocked under workspace-write).
 - Run tests before considering the task complete.
 - If you cannot complete the task, commit what you have so far and explain
   in the final message what is blocked and why.

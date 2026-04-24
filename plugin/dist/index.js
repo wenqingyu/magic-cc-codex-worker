@@ -25214,7 +25214,7 @@ var {
 
 // src/index.ts
 import { fileURLToPath as fileURLToPath3 } from "node:url";
-import { dirname as dirname2, join as join7, resolve as resolve2 } from "node:path";
+import { dirname as dirname2, join as join8, resolve as resolve2 } from "node:path";
 import { homedir as homedir2 } from "node:os";
 
 // src/registry.ts
@@ -25425,6 +25425,9 @@ var Worktrees = class {
     }
   }
 };
+
+// src/orchestrator.ts
+import { join as join4 } from "node:path";
 
 // src/roles/loader.ts
 import { readFile as readFile2 } from "node:fs/promises";
@@ -26240,13 +26243,15 @@ var Orchestrator = class {
       started_at: (/* @__PURE__ */ new Date()).toISOString()
     });
     await this.mirrorWorker(running);
+    const writable_roots = worktreeInfo && preset.sandbox === "workspace-write" ? [join4(repoRoot, ".git")] : void 0;
     this.launchBackground(rec.agent_id, preset, {
       prompt: input.prompt,
       cwd,
       model,
       sandbox: preset.sandbox,
       approval_policy: preset.approval_policy,
-      developer_instructions: instructions
+      developer_instructions: instructions,
+      ...writable_roots ? { writable_roots } : {}
     });
     return {
       agent_id: rec.agent_id,
@@ -27364,7 +27369,14 @@ var CodexChild = class {
       ...input.model ? { model: input.model } : {},
       ...input.sandbox ? { sandbox: input.sandbox } : {},
       ...input.approval_policy ? { "approval-policy": input.approval_policy } : {},
-      ...input.developer_instructions ? { "developer-instructions": input.developer_instructions } : {}
+      ...input.developer_instructions ? { "developer-instructions": input.developer_instructions } : {},
+      ...input.writable_roots && input.writable_roots.length > 0 ? {
+        config: {
+          sandbox_workspace_write: {
+            writable_roots: input.writable_roots
+          }
+        }
+      } : {}
     };
     const result = await this.client.callTool(
       { name: toolName, arguments: args },
@@ -27465,10 +27477,10 @@ async function readLevelFromToml(path6) {
 
 // src/mf/detect.ts
 import { existsSync as existsSync2 } from "node:fs";
-import { join as join4 } from "node:path";
+import { join as join5 } from "node:path";
 function detectMf(repoRoot) {
-  const has_magic_flow_dir = existsSync2(join4(repoRoot, ".magic-flow"));
-  const has_workers_json = existsSync2(join4(repoRoot, "ops", "workers.json"));
+  const has_magic_flow_dir = existsSync2(join5(repoRoot, ".magic-flow"));
+  const has_workers_json = existsSync2(join5(repoRoot, "ops", "workers.json"));
   return {
     detected: has_magic_flow_dir || has_workers_json,
     repoRoot,
@@ -27480,9 +27492,9 @@ function detectMf(repoRoot) {
 // src/mf/conventions.ts
 import { readFile as readFile4 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join as join5 } from "node:path";
+import { join as join6 } from "node:path";
 async function readMfConventions(customPath) {
-  const path6 = customPath ?? join5(homedir(), ".claude", "CLAUDE.md");
+  const path6 = customPath ?? join6(homedir(), ".claude", "CLAUDE.md");
   let raw;
   try {
     raw = await readFile4(path6, "utf8");
@@ -27563,13 +27575,13 @@ var LinearClient = class {
 // src/mf/workers.ts
 import { existsSync as existsSync3 } from "node:fs";
 import { readFile as readFile5, writeFile as writeFile2, mkdir as mkdir2, rename as rename2 } from "node:fs/promises";
-import { dirname, join as join6 } from "node:path";
+import { dirname, join as join7 } from "node:path";
 var WorkersMirror = class {
   constructor(repoRoot) {
     this.repoRoot = repoRoot;
   }
   get file() {
-    return join6(this.repoRoot, "ops", "workers.json");
+    return join7(this.repoRoot, "ops", "workers.json");
   }
   async load() {
     if (!existsSync3(this.file)) return { version: 1, workers: {} };
@@ -27727,10 +27739,10 @@ var MergeInputZ = external_exports.object({
 var DiscardInputZ = external_exports.object({ agent_id: external_exports.string() });
 async function main() {
   const repoRoot = await detectRepoRoot();
-  const stateDir = process.env.MAGIC_CODEX_STATE_DIR ? resolve2(repoRoot, process.env.MAGIC_CODEX_STATE_DIR) : join7(repoRoot, ".magic-codex");
-  const rolesDir = join7(__dirname, "roles", "defaults");
-  const projectConfigPath = join7(repoRoot, "magic-codex.toml");
-  const userConfigPath = join7(homedir2(), ".magic-codex", "config.toml");
+  const stateDir = process.env.MAGIC_CODEX_STATE_DIR ? resolve2(repoRoot, process.env.MAGIC_CODEX_STATE_DIR) : join8(repoRoot, ".magic-codex");
+  const rolesDir = join8(__dirname, "roles", "defaults");
+  const projectConfigPath = join8(repoRoot, "magic-codex.toml");
+  const userConfigPath = join8(homedir2(), ".magic-codex", "config.toml");
   const registry2 = new Registry(stateDir);
   const worktrees = new Worktrees(repoRoot);
   const mf = detectMf(repoRoot);

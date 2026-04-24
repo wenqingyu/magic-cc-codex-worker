@@ -193,6 +193,40 @@ describe("Orchestrator.spawn", () => {
     expect(secondArg).toBe(1234 * 1000);
   });
 
+  it("passes writable_roots=[repoRoot/.git] for workspace-write worktree spawns", async () => {
+    // 0.3.6 fix: codex's workspace-write sandbox blocks writes to the
+    // main repo's `.git` (objects/refs/per-worktree metadata), so git
+    // inside a linked worktree silently fails. Expose `.git` as an
+    // extra writable root so agents can commit from their own worktree.
+    const call = vi.fn().mockResolvedValue({ threadId: "t", content: "", raw: {} });
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: mockCodexFactory(call),
+      rolesDir,
+      repoRoot: repo,
+    });
+    const res = await orch.spawn({ role: "implementer", prompt: "edit and commit" });
+    await orch.waitForAgent(res.agent_id);
+    const passed = call.mock.calls[0][0];
+    expect(passed.writable_roots).toEqual([`${repo}/.git`]);
+  });
+
+  it("omits writable_roots for read-only roles (reviewer without PR)", async () => {
+    const call = vi.fn().mockResolvedValue({ threadId: "t", content: "", raw: {} });
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: mockCodexFactory(call),
+      rolesDir,
+      repoRoot: repo,
+    });
+    const res = await orch.spawn({ role: "reviewer", prompt: "review x" });
+    await orch.waitForAgent(res.agent_id);
+    const passed = call.mock.calls[0][0];
+    expect(passed.writable_roots).toBeUndefined();
+  });
+
   it("applies developer_instructions_append override", async () => {
     const call = vi.fn().mockResolvedValue({ threadId: "t", content: "", raw: {} });
     const orch = new Orchestrator({

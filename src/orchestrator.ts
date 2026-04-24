@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { Registry } from "./registry.js";
 import { Worktrees } from "./worktree.js";
 import type {
@@ -217,6 +218,17 @@ export class Orchestrator {
     });
     await this.mirrorWorker(running);
 
+    // Under workspace-write, git writes from inside a linked worktree land
+    // in the main repo's `.git` (objects, refs, per-worktree HEAD/index),
+    // which lives outside the worktree and is blocked by the sandbox.
+    // Expose `<repo>/.git` as an extra writable root so the agent can
+    // commit / branch / create PRs from its own worktree instead of
+    // handing finalization back to a supervisor.
+    const writable_roots =
+      worktreeInfo && preset.sandbox === "workspace-write"
+        ? [join(repoRoot, ".git")]
+        : undefined;
+
     this.launchBackground(rec.agent_id, preset, {
       prompt: input.prompt,
       cwd,
@@ -224,6 +236,7 @@ export class Orchestrator {
       sandbox: preset.sandbox,
       approval_policy: preset.approval_policy,
       developer_instructions: instructions,
+      ...(writable_roots ? { writable_roots } : {}),
     });
 
     return {

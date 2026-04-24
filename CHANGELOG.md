@@ -2,6 +2,14 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.6] — 2026-04-24
+
+### Fixed
+- **Codex workers couldn't run git from their own worktree.** Under `sandbox: workspace-write`, seatbelt/landlock scopes writes to the primary workspace — but `git worktree add` creates a linked worktree whose `.git` is a pointer file to `<main-repo>/.git/worktrees/<name>/`. Every `git add`/`commit`/`branch` inside a worker worktree writes to the shared object DB and per-worktree metadata in the main repo's `.git`, which sat outside the sandbox and was blocked. Workers appeared to "refuse git" and all finalization had to be redundantly handed back to a supervisor. Fix: the orchestrator now passes `config.sandbox_workspace_write.writable_roots = ["<repo>/.git"]` to the codex MCP `codex` tool on any workspace-write worktree spawn. Network stays blocked, the main working tree stays read-only, only `.git` is newly writable. Implementer preset instructions updated to reflect that local git now works. Two new unit tests cover the pass-through for implementer (writable_roots set) and read-only reviewer (writable_roots omitted).
+
+### Note (network still blocked)
+This only fixes local git. `git push` and `gh pr create` still hit the network, which workspace-write blocks by design. Opening PRs from workers requires either enabling `sandbox_workspace_write.network_access = true` per spawn or continuing to delegate push/PR to a supervisor. A future release may expose `network_access` as a role preset knob.
+
 ## [0.3.5] — 2026-04-24
 
 ### Fixed

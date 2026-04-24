@@ -10,6 +10,12 @@ export interface CodexCallInput {
   approval_policy?: ApprovalPolicy;
   developer_instructions?: string;
   thread_id?: string;
+  /** Extra absolute paths writable under a `workspace-write` sandbox.
+   *  Mapped to `config.sandbox_workspace_write.writable_roots` on the
+   *  codex MCP `codex` tool. The default spawn wires this to the main
+   *  repo's `.git` directory so git commands inside a worktree can
+   *  write to the shared object DB / refs / per-worktree metadata. */
+  writable_roots?: string[];
 }
 
 export interface CodexCallResult {
@@ -68,6 +74,15 @@ export class CodexChild {
           ...(input.approval_policy ? { "approval-policy": input.approval_policy } : {}),
           ...(input.developer_instructions
             ? { "developer-instructions": input.developer_instructions }
+            : {}),
+          ...(input.writable_roots && input.writable_roots.length > 0
+            ? {
+                config: {
+                  sandbox_workspace_write: {
+                    writable_roots: input.writable_roots,
+                  },
+                },
+              }
             : {}),
         };
     const result = await this.client.callTool(

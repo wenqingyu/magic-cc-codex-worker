@@ -24,15 +24,24 @@
 
 ### 一条提示词完成安装(推荐)
 
-把下面这段话粘贴进任意 Claude Code 会话 —— Claude 会自动克隆、构建、注册并验证插件:
+把下面这段话(保持英文原文,以确保 Claude Code 准确执行)粘贴进任意 Claude Code 会话 —— Claude 会自动克隆、构建、注册并验证插件:
 
 ```text
-请帮我安装 `magic-cc-codex-worker` 插件,仓库地址 https://github.com/wenqingyu/magic-cc-codex-worker:
-1. 克隆到 `~/.claude/plugins-local/magic-cc-codex-worker`(目录不存在就创建)。
-2. `cd` 进去运行 `npm install && npm run build`。
-3. 注册:运行 `/plugin marketplace add ~/.claude/plugins-local/magic-cc-codex-worker`。
-4. 安装:`/plugin install magic-cc-codex-worker@magic-cc-codex-worker`。
-5. 如果提示重启 Claude Code 就重启,然后运行 `/codex-status` 验证(应该返回"没有代理")。在启动真实代理之前,确认 `codex` CLI 已认证(`codex --version` 可成功)。
+Install the `magic-cc-codex-worker` Claude Code plugin from https://github.com/wenqingyu/magic-cc-codex-worker.
+
+Before starting, verify prerequisites — abort and tell me if any fail:
+- `node --version` is v20 or later
+- `git --version` is v2.40 or later
+- `codex --version` succeeds (Codex CLI installed and authenticated)
+
+Steps:
+1. Run: `mkdir -p ~/.claude/plugins-local && git clone https://github.com/wenqingyu/magic-cc-codex-worker ~/.claude/plugins-local/magic-cc-codex-worker` — skip the clone if that directory already exists and is a valid clone of this repo.
+2. Run: `cd ~/.claude/plugins-local/magic-cc-codex-worker && npm install && npm run build`.
+3. In this Claude Code session, invoke the slash command: `/plugin marketplace add ~/.claude/plugins-local/magic-cc-codex-worker`
+4. Invoke the slash command: `/plugin install magic-cc-codex-worker@magic-cc-codex-worker` — the format is `<plugin-name>@<marketplace-name>`; both happen to be the same here.
+5. Tell me to restart Claude Code; the plugin only activates after restart. After I restart, verify by running `/codex-status` — it should return an empty agent list. Confirm that these 9 `codex-team` MCP tools are registered: spawn, status, result, resume, cancel, list, merge, discard, get_delegation_policy.
+
+If any step fails, stop and report exactly which command failed and its error output. Do not attempt workarounds.
 ```
 
 ### 手动安装

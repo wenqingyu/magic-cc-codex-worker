@@ -27,12 +27,21 @@
 Paste this into any Claude Code session — Claude will clone, build, register, and verify the plugin end-to-end:
 
 ```text
-Install the `magic-cc-codex-worker` plugin from https://github.com/wenqingyu/magic-cc-codex-worker:
-1. Clone it to `~/.claude/plugins-local/magic-cc-codex-worker` (create the dir if needed).
-2. `cd` there and run `npm install && npm run build`.
-3. Register it: run `/plugin marketplace add ~/.claude/plugins-local/magic-cc-codex-worker`.
-4. Install it: `/plugin install magic-cc-codex-worker@magic-cc-codex-worker`.
-5. Restart Claude Code if prompted, then verify by running `/codex-status` (should return "no agents" cleanly). Confirm the `codex` CLI is authenticated (`codex --version` succeeds) before spawning real agents.
+Install the `magic-cc-codex-worker` Claude Code plugin from https://github.com/wenqingyu/magic-cc-codex-worker.
+
+Before starting, verify prerequisites — abort and tell me if any fail:
+- `node --version` is v20 or later
+- `git --version` is v2.40 or later
+- `codex --version` succeeds (Codex CLI installed and authenticated)
+
+Steps:
+1. Run: `mkdir -p ~/.claude/plugins-local && git clone https://github.com/wenqingyu/magic-cc-codex-worker ~/.claude/plugins-local/magic-cc-codex-worker` — skip the clone if that directory already exists and is a valid clone of this repo.
+2. Run: `cd ~/.claude/plugins-local/magic-cc-codex-worker && npm install && npm run build`.
+3. In this Claude Code session, invoke the slash command: `/plugin marketplace add ~/.claude/plugins-local/magic-cc-codex-worker`
+4. Invoke the slash command: `/plugin install magic-cc-codex-worker@magic-cc-codex-worker` — the format is `<plugin-name>@<marketplace-name>`; both happen to be the same here.
+5. Tell me to restart Claude Code; the plugin only activates after restart. After I restart, verify by running `/codex-status` — it should return an empty agent list. Confirm that these 9 `codex-team` MCP tools are registered: spawn, status, result, resume, cancel, list, merge, discard, get_delegation_policy.
+
+If any step fails, stop and report exactly which command failed and its error output. Do not attempt workarounds.
 ```
 
 ### Manual install

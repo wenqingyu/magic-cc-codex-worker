@@ -26,12 +26,14 @@
 
 Paste this into any Claude Code session — Claude will clone, build, register, and verify the plugin end-to-end:
 
-> Install the `magic-cc-codex-worker` plugin from `https://github.com/wenqingyu/magic-cc-codex-worker`:
-> 1. Clone it to `~/.claude/plugins-local/magic-cc-codex-worker` (create the dir if needed).
-> 2. `cd` there and run `npm install && npm run build`.
-> 3. Register it: run `/plugin marketplace add ~/.claude/plugins-local/magic-cc-codex-worker`.
-> 4. Install it: `/plugin install magic-cc-codex-worker@magic-cc-codex-worker`.
-> 5. Restart Claude Code if prompted, then verify by running `/codex-status` (should return "no agents" cleanly). Confirm `codex` CLI is authenticated (`codex --version` succeeds) before spawning real agents.
+```text
+Install the `magic-cc-codex-worker` plugin from https://github.com/wenqingyu/magic-cc-codex-worker:
+1. Clone it to `~/.claude/plugins-local/magic-cc-codex-worker` (create the dir if needed).
+2. `cd` there and run `npm install && npm run build`.
+3. Register it: run `/plugin marketplace add ~/.claude/plugins-local/magic-cc-codex-worker`.
+4. Install it: `/plugin install magic-cc-codex-worker@magic-cc-codex-worker`.
+5. Restart Claude Code if prompted, then verify by running `/codex-status` (should return "no agents" cleanly). Confirm the `codex` CLI is authenticated (`codex --version` succeeds) before spawning real agents.
+```
 
 ### Manual install
 

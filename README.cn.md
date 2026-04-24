@@ -26,12 +26,14 @@
 
 把下面这段话粘贴进任意 Claude Code 会话 —— Claude 会自动克隆、构建、注册并验证插件:
 
-> 请帮我安装 `magic-cc-codex-worker` 插件,仓库地址 `https://github.com/wenqingyu/magic-cc-codex-worker`:
-> 1. 克隆到 `~/.claude/plugins-local/magic-cc-codex-worker`(目录不存在就创建)。
-> 2. `cd` 进去运行 `npm install && npm run build`。
-> 3. 注册:运行 `/plugin marketplace add ~/.claude/plugins-local/magic-cc-codex-worker`。
-> 4. 安装:`/plugin install magic-cc-codex-worker@magic-cc-codex-worker`。
-> 5. 如果提示重启 Claude Code 就重启,然后运行 `/codex-status` 验证(应该返回"没有代理")。在启动真实代理之前,确认 `codex` CLI 已认证(`codex --version` 可成功)。
+```text
+请帮我安装 `magic-cc-codex-worker` 插件,仓库地址 https://github.com/wenqingyu/magic-cc-codex-worker:
+1. 克隆到 `~/.claude/plugins-local/magic-cc-codex-worker`(目录不存在就创建)。
+2. `cd` 进去运行 `npm install && npm run build`。
+3. 注册:运行 `/plugin marketplace add ~/.claude/plugins-local/magic-cc-codex-worker`。
+4. 安装:`/plugin install magic-cc-codex-worker@magic-cc-codex-worker`。
+5. 如果提示重启 Claude Code 就重启,然后运行 `/codex-status` 验证(应该返回"没有代理")。在启动真实代理之前,确认 `codex` CLI 已认证(`codex --version` 可成功)。
+```
 
 ### 手动安装
 

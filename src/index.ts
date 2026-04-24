@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+// Shebang is injected by the esbuild --banner flag at build time.
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {

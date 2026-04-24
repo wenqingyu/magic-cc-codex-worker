@@ -2,6 +2,17 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.2] — 2026-04-24
+
+### Fixed
+- **Critical:** MCP server couldn't start once installed. `plugin/dist/index.js` imported `@modelcontextprotocol/sdk`, `execa`, `zod`, etc. at runtime, but Claude Code's plugin install copies the plugin directory verbatim — no `npm install` step — so `node_modules` was never shipped. Node threw `ERR_MODULE_NOT_FOUND` at startup, Claude Code silently fell back, and only the `codex-raw` server's tools were exposed. `/magic-codex:status` and the other 8 slash commands appeared registered but calling them failed because the backing MCP tools weren't there.
+- Fix: bundle all runtime dependencies into a single `plugin/dist/index.js` using esbuild. The bundled file runs standalone with no `node_modules` required. Includes a `createRequire` shim in the banner to handle transitive CJS-only deps (execa → cross-spawn). `plugin/dist/roles/defaults/*.toml` is still copied as data files alongside the bundle.
+
+### Changed
+- New build pipeline: `scripts/build.mjs` orchestrates esbuild + TOML copy. Build output is now a single-file 947 KB bundle instead of a directory tree of compiled `.js` files. Much simpler to ship, same speed at startup.
+- Source now omits the shebang line (esbuild injects it via `--banner`).
+- README install section adds **Step 3 — `/reload-plugins`** so users don't have to fully restart Claude Code after install.
+
 ## [0.3.1] — 2026-04-24
 
 ### Changed (breaking)

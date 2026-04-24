@@ -61,9 +61,15 @@ Picks one plugin out of the catalog and attaches it to your Claude Code session.
 /plugin install magic-codex@magic-codex
 ```
 
-#### Step 3 — Restart Claude Code
+#### Step 3 — Reload plugins
 
-The plugin activates on the next session. After restart, run `/magic-codex:status` to confirm — should return an empty agent list, and the 9 `magic-codex` MCP tools should be registered.
+Activates the newly-installed plugin in the current session without a full restart.
+
+```text
+/reload-plugins
+```
+
+After reload, run `/magic-codex:status` to verify — should return an empty agent list, and the 9 `magic-codex` MCP tools should be registered. If commands don't show up in autocomplete, fully restart Claude Code.
 
 That's it: no clone, no build, no config on your side. Claude Code fetches the repo, reads `.claude-plugin/marketplace.json`, and installs the plugin with its prebuilt `dist/`, commands, and agents.
 

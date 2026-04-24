@@ -1,17 +1,17 @@
 {
   "name": "magic-cc-codex-worker",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Parallel Codex workers inside Claude Code — multi-agent orchestration.",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "main": "plugin/dist/index.js",
   "bin": {
-    "codex-team-mcp": "plugin/dist/index.js"
+    "magic-codex-mcp": "plugin/dist/index.js"
   },
   "scripts": {
-    "build": "tsc && rm -rf plugin/dist/roles/defaults && mkdir -p plugin/dist/roles && cp -r src/roles/defaults plugin/dist/roles/defaults",
-    "dev": "tsc --watch",
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.17.9",
+    "esbuild": "^0.24.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   },

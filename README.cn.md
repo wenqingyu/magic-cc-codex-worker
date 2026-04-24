@@ -61,9 +61,15 @@ Claude Code 的插件分发采用两步模式 —— 类似 `brew tap` + `brew i
 /plugin install magic-codex@magic-codex
 ```
 
-#### 第 3 步 —— 重启 Claude Code
+#### 第 3 步 —— 重新加载插件
 
-插件在下一次会话中自动启用。重启后运行 `/magic-codex:status` 验证 —— 应返回空的代理列表,并注册 9 个 `magic-codex` MCP 工具。
+在当前会话中激活刚安装的插件,无需完全重启。
+
+```text
+/reload-plugins
+```
+
+重新加载后运行 `/magic-codex:status` 验证 —— 应返回空的代理列表,并注册 9 个 `magic-codex` MCP 工具。如果自动补全里看不到命令,完全重启一次 Claude Code。
 
 就这么简单:你这边不需要克隆、不需要构建、不需要配置。Claude Code 会拉取仓库、读取 `.claude-plugin/marketplace.json`,并用预构建好的 `dist/`、斜杠命令、子代理一并安装。
 

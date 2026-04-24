@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import type { Registry } from "./registry.js";
 import { Worktrees } from "./worktree.js";
@@ -224,9 +225,14 @@ export class Orchestrator {
     // Expose `<repo>/.git` as an extra writable root so the agent can
     // commit / branch / create PRs from its own worktree instead of
     // handing finalization back to a supervisor.
+    //
+    // realpathSync is load-bearing on macOS: seatbelt matches writes
+    // against the canonical path (e.g. `/private/var/...` not `/var/...`,
+    // or APFS firmlink edges). Passing a logical path made the policy
+    // miss for some workers and not others — flaky HEAD.lock denials.
     const writable_roots =
       worktreeInfo && preset.sandbox === "workspace-write"
-        ? [join(repoRoot, ".git")]
+        ? [canonicalGitDir(repoRoot)]
         : undefined;
 
     this.launchBackground(rec.agent_id, preset, {
@@ -490,6 +496,15 @@ export class Orchestrator {
       }
     })();
     this.tasks.set(agent_id, task);
+  }
+}
+
+function canonicalGitDir(repoRoot: string): string {
+  const gitDir = join(repoRoot, ".git");
+  try {
+    return realpathSync(gitDir);
+  } catch {
+    return gitDir;
   }
 }
 

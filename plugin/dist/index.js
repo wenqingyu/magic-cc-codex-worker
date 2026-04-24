@@ -25427,6 +25427,7 @@ var Worktrees = class {
 };
 
 // src/orchestrator.ts
+import { realpathSync } from "node:fs";
 import { join as join4 } from "node:path";
 
 // src/roles/loader.ts
@@ -26243,7 +26244,7 @@ var Orchestrator = class {
       started_at: (/* @__PURE__ */ new Date()).toISOString()
     });
     await this.mirrorWorker(running);
-    const writable_roots = worktreeInfo && preset.sandbox === "workspace-write" ? [join4(repoRoot, ".git")] : void 0;
+    const writable_roots = worktreeInfo && preset.sandbox === "workspace-write" ? [canonicalGitDir(repoRoot)] : void 0;
     this.launchBackground(rec.agent_id, preset, {
       prompt: input.prompt,
       cwd,
@@ -26464,6 +26465,14 @@ var Orchestrator = class {
     this.tasks.set(agent_id, task);
   }
 };
+function canonicalGitDir(repoRoot) {
+  const gitDir = join4(repoRoot, ".git");
+  try {
+    return realpathSync(gitDir);
+  } catch {
+    return gitDir;
+  }
+}
 function slugify(s) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 40);
 }
@@ -27344,7 +27353,7 @@ var CodexChild = class {
       stderr: "pipe"
     });
     this.client = new Client(
-      { name: "magic-codex", version: "0.3.0" },
+      { name: "magic-codex", version: "0.3.7" },
       { capabilities: {} }
     );
     await this.client.connect(this.transport);
@@ -27685,6 +27694,17 @@ function agentSummary(rec) {
     error_summary: rec.error?.message ?? null
   };
 }
+var TRACE = process.env.MAGIC_CODEX_TRACE === "1";
+function trace(event, data) {
+  if (!TRACE) return;
+  const line = JSON.stringify({
+    t: (/* @__PURE__ */ new Date()).toISOString(),
+    pid: process.pid,
+    event,
+    ...data
+  });
+  process.stderr.write(line + "\n");
+}
 function countByStatus(records) {
   const counts = {
     queued: 0,
@@ -27765,7 +27785,7 @@ async function main() {
     mfConventions
   });
   const server = new Server(
-    { name: "magic-codex", version: "0.3.5" },
+    { name: "magic-codex", version: "0.3.7" },
     { capabilities: { tools: {} } }
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -27915,7 +27935,21 @@ async function main() {
     const { name, arguments: args } = req.params;
     if (name === "spawn") {
       const parsed = SpawnInputZ.parse(args);
+      trace("spawn.received", {
+        role: parsed.role,
+        prompt_head: parsed.prompt.slice(0, 80),
+        prompt_len: parsed.prompt.length,
+        issue_id: parsed.issue_id ?? null,
+        pr_number: parsed.pr_number ?? null,
+        repo_root: parsed.repo_root ?? null
+      });
       const result = await orch.spawn(parsed);
+      trace("spawn.created", {
+        agent_id: result.agent_id,
+        role: result.role,
+        worktree_path: result.worktree_path,
+        prompt_head: parsed.prompt.slice(0, 80)
+      });
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         structuredContent: result

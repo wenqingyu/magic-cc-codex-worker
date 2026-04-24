@@ -51,6 +51,26 @@ function agentSummary(rec: AgentRecord) {
   };
 }
 
+/**
+ * Diagnostic trace for debugging multi-spawn prompt misrouting.
+ * Enable with `MAGIC_CODEX_TRACE=1`. Emits one JSON line per spawn to
+ * stderr with the first 80 chars of the received prompt and the agent
+ * id returned. If you batch N spawns and the prompt text here doesn't
+ * match what you sent, the misrouting is upstream of this process
+ * (Claude Code's MCP client or the stdio transport).
+ */
+const TRACE = process.env.MAGIC_CODEX_TRACE === "1";
+function trace(event: string, data: Record<string, unknown>): void {
+  if (!TRACE) return;
+  const line = JSON.stringify({
+    t: new Date().toISOString(),
+    pid: process.pid,
+    event,
+    ...data,
+  });
+  process.stderr.write(line + "\n");
+}
+
 function countByStatus(records: AgentRecord[]) {
   const counts: Record<string, number> = {
     queued: 0,
@@ -141,7 +161,7 @@ async function main() {
   });
 
   const server = new Server(
-    { name: "magic-codex", version: "0.3.5" },
+    { name: "magic-codex", version: "0.3.7" },
     { capabilities: { tools: {} } },
   );
 
@@ -304,7 +324,21 @@ async function main() {
     const { name, arguments: args } = req.params;
     if (name === "spawn") {
       const parsed = SpawnInputZ.parse(args);
+      trace("spawn.received", {
+        role: parsed.role,
+        prompt_head: parsed.prompt.slice(0, 80),
+        prompt_len: parsed.prompt.length,
+        issue_id: parsed.issue_id ?? null,
+        pr_number: parsed.pr_number ?? null,
+        repo_root: parsed.repo_root ?? null,
+      });
       const result = await orch.spawn(parsed);
+      trace("spawn.created", {
+        agent_id: result.agent_id,
+        role: result.role,
+        worktree_path: result.worktree_path,
+        prompt_head: parsed.prompt.slice(0, 80),
+      });
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         structuredContent: result as unknown as Record<string, unknown>,

@@ -44,7 +44,7 @@ export class CodexChild {
       stderr: "pipe",
     });
     this.client = new Client(
-      { name: "magic-codex", version: "0.3.0" },
+      { name: "magic-codex", version: "0.3.7" },
       { capabilities: {} },
     );
     await this.client.connect(this.transport);

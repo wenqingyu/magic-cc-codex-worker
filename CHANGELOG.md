@@ -2,6 +2,15 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.7] — 2026-04-25
+
+### Fixed
+- **`.git/worktrees/<worker>/HEAD.lock` denied intermittently (~40% of parallel spawns).** 0.3.6 added `<repo>/.git` as a writable root, but the path was passed verbatim from `git rev-parse --show-toplevel` — a logical path. macOS seatbelt evaluates `open()` against the canonical target (`/private/var/...`, APFS firmlinks, etc.), and some workers' paths resolved differently, missing the policy. Fix: canonicalize with `fs.realpathSync` before passing to codex. Flaky HEAD.lock denials should now be fully deterministic.
+- Version literals in `src/index.ts` and `src/mcp/codex-client.ts` were frozen at 0.3.5 / 0.3.0. Bumped to match release.
+
+### Added
+- **`MAGIC_CODEX_TRACE=1` diagnostic.** When enabled, each `spawn` logs one JSON line to stderr with `{t, pid, event, role, prompt_head, prompt_len, agent_id}` at both `spawn.received` (args parsed) and `spawn.created` (agent registered). Lets you tell whether batched multi-call spawns are misrouting prompts upstream of the plugin (Claude Code's MCP client / stdio transport) or inside it. The handler code itself has no cross-request shared state, so misrouting likely originates upstream — this flag gives you the evidence.
+
 ## [0.3.6] — 2026-04-24
 
 ### Fixed

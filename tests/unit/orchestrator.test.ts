@@ -209,7 +209,10 @@ describe("Orchestrator.spawn", () => {
     const res = await orch.spawn({ role: "implementer", prompt: "edit and commit" });
     await orch.waitForAgent(res.agent_id);
     const passed = call.mock.calls[0][0];
-    expect(passed.writable_roots).toEqual([`${repo}/.git`]);
+    // 0.3.7: path is realpath-canonicalized so macOS seatbelt matches
+    // reliably regardless of /var vs /private/var or APFS firmlinks.
+    const { realpathSync } = await import("node:fs");
+    expect(passed.writable_roots).toEqual([realpathSync(`${repo}/.git`)]);
   });
 
   it("omits writable_roots for read-only roles (reviewer without PR)", async () => {

@@ -1,5 +1,7 @@
 # magic-cc-codex-worker
 
+### Parallel Codex workers inside Claude Code.
+
 [![CI](https://github.com/wenqingyu/magic-cc-codex-worker/actions/workflows/ci.yml/badge.svg)](https://github.com/wenqingyu/magic-cc-codex-worker/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen)](.nvmrc)
@@ -7,16 +9,33 @@
 
 **Languages:** English · [简体中文](README.cn.md)
 
-> A Claude Code plugin that turns **[Codex](https://github.com/openai/codex) into a pool of agent workers** — spawn, track, resume, review, and merge Codex sessions directly from inside Claude Code.
+> **Turn Claude Code into a multi-agent coding system.** Delegate long-running implementation, reviews, and planning to a pool of Codex workers running in parallel, isolated git worktrees — without leaving your Claude Code session.
+
+This is the bridge between two ecosystems: Claude stays in orchestrator mode (planning, synthesis, interactive work), Codex workers absorb the grunt work. You scale your throughput, preserve your Claude budget, and keep every worker's output reviewable before it touches your main tree.
 
 ## Why use this?
 
-- 🎯 **The best way to systematically delegate Codex agents as Claude Code sub-workers.** Not a thin wrapper that just forwards a prompt to a single Codex call — this is a full orchestration layer with role-based specialization, git worktree isolation, resumable sessions, parallel fan-out, and first-class session tracking. Every delegation is tuned, sandboxed, and observable.
-- 💰 **Save and balance your Claude Code quota.** Offload long-running implementation, reviews, and planning to Codex — let Claude stay in orchestrator mode. Your Claude budget goes further; the Codex stack absorbs the grunt work. One knob (`minimal` / `balance` / `max`) controls the split.
-- 🔀 **Two model families beat one.** Spawn a Codex (GPT) reviewer alongside Claude's own review — different models catch different classes of bugs. The plugin materializes PRs in detached git worktrees so the reviewer inspects real files, not a diff blob.
-- 🧰 **Real engineering, not a toy.** 62 unit tests, strict TypeScript, CI on Node 20/22. Designed from an actual spike of Codex's MCP protocol — no stdout parsing, no brittle scraping. Git worktrees for parallelism, MCP protocol for transport, TOML for configuration, sandboxed execution for safety.
+- ⚡ **Parallel execution.** Fan out N Codex workers on independent subtasks in N isolated worktrees. Finish work that would serialize in a single Claude session.
+- 🛡️ **Isolated experimentation.** Every implementer runs in its own `git worktree` on its own branch. Try three approaches in parallel; keep the best; discard the rest. Zero risk to your main tree.
+- 🔀 **Two model families beat one.** Launch a Codex (GPT) reviewer alongside your Claude review — different models catch different classes of bugs. The plugin materializes PRs in detached worktrees so the reviewer reads real files, not a diff blob.
+- 💰 **Quota arbitrage.** Claude budget running low? Dial delegation up to `max` and route everything Codex can handle over there — Claude stays in orchestrator mode. One knob (`minimal` / `balance` / `max`) controls the split.
+- 🎯 **Role-tuned, observable delegation.** Not a thin "forward the prompt" wrapper — a full orchestration layer with role-based specialization (implementer / reviewer / planner / generic), resumable sessions, per-role sandbox + timeout, and first-class session tracking in a persisted registry.
+- 🧰 **Production engineering.** 62 unit tests, strict TypeScript, CI on Node 20/22. Designed from an actual spike of Codex's MCP protocol — no stdout parsing, no brittle scraping. Git worktrees for parallelism, MCP protocol for transport, TOML for configuration, sandboxed execution for safety.
 
-**Use cases** — run long implementation tasks out-of-process so they don't eat Claude's context • fan out parallel Codex workers on independent subtasks • get a second-opinion GPT review on PRs alongside Claude's review • resume named agents across conversations.
+## How it compares
+
+|                                       | Official Codex plugin | **magic-cc-codex-worker** |
+|---------------------------------------|:---------------------:|:-------------------------:|
+| Single Codex session in Claude Code   | ✅                    | ✅                         |
+| Multi-agent orchestration             | ❌                    | ✅                         |
+| Parallel worker execution             | ❌                    | ✅                         |
+| Git worktree isolation per worker     | ❌                    | ✅                         |
+| Role-based specialization             | ❌                    | ✅                         |
+| Resumable session continuity          | ❌                    | ✅                         |
+| Dual-model PR review                  | ❌                    | ✅                         |
+| Epic / batch fan-out                  | ❌                    | ✅                         |
+
+Official Codex plugin lets you **use** Codex. This plugin lets you **scale** Codex.
 
 ---
 
@@ -62,6 +81,15 @@ That's the whole loop: spawn → poll → merge.
 
 ---
 
+## Capabilities
+
+- **Parallel task execution** — spawn N Codex workers that all run at once, each in its own sandboxed branch.
+- **Isolated experimentation** — try multiple approaches to the same task; `/codex-merge` the winner, `/codex-discard` the rest. Your main tree is never at risk.
+- **Best-result selection** — review each worker's diff independently before anything lands.
+- **Resumable sessions** — worker finished but you need a follow-up? `/codex-resume <agent_id>` continues the same Codex thread.
+- **Dual-model review** — spawn a Codex reviewer on a PR; read its report alongside your own Claude review.
+- **Multi-agent workflows** — fan out a Linear epic to one worker per child issue; collect results as a batch.
+
 ## How it works
 
 The plugin bundles two MCP servers:
@@ -69,11 +97,11 @@ The plugin bundles two MCP servers:
 1. **`codex mcp-server`** (from Codex itself) — exposed as-is for the sub-60s synchronous fast path.
 2. **`codex-team`** (this project) — async orchestration: spawn in background, track state, manage git worktrees, enforce timeouts, route results back.
 
-Every implementer-role agent runs in its own git worktree so parallel agents never clobber each other's edits. Reviewer-role agents run read-only, optionally inside a detached worktree at a PR's head SHA.
+Every implementer-role worker runs in its own git worktree so parallel workers never clobber each other's edits. Reviewer-role workers run read-only, optionally inside a detached worktree at a PR's head SHA.
 
 ---
 
-## MCP tools
+## Technical reference — MCP tools
 
 | Tool | Purpose |
 |---|---|
@@ -278,4 +306,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Tests required; strict TypeScript; small
 
 [MIT](LICENSE) © magic-cc-codex-worker contributors.
 
-Part of **Magic Stack** — an agent-autonomous development stack for production-ready projects.
+Part of **Magic Stack** — an agent-autonomous development stack for production-ready projects. This plugin is its multi-agent bridge between Claude Code and the Codex ecosystem.

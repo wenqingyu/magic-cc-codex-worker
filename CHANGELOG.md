@@ -2,6 +2,17 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.1] — 2026-04-24
+
+### Fixed
+- **Critical:** `plugin.json` relocated from repo root to `.claude-plugin/plugin.json` (the canonical location Claude Code scans for plugin discovery). Without this, `/plugin install` would appear to succeed but the plugin's commands, agents, and MCP servers were never exposed to the session. This affected every 0.2.0 install.
+- Build script made idempotent — `dist/roles/defaults` is cleaned before the TOML copy, preventing a nested `dist/roles/defaults/defaults/` on repeat builds.
+- CI drift check added to `.github/workflows/ci.yml` — fails the build if committed `dist/` doesn't match a fresh `npm run build`, preventing stale artifacts.
+
+### Changed
+- Install flow simplified to two slash commands (`/plugin marketplace add wenqingyu/magic-cc-codex-worker` + `/plugin install magic-cc-codex-worker@magic-cc-codex-worker`) after Claude Code's marketplace mechanism clarified. No clone / build step required by the user.
+- `dist/` is now committed so remote install works without a Node toolchain on the user's machine.
+
 ## [0.2.0] — 2026-04-24
 
 ### Added

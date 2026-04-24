@@ -1,5 +1,6 @@
 # magic-cc-codex-worker
 
+[![CI](https://github.com/wenqingyu/magic-cc-codex-worker/actions/workflows/ci.yml/badge.svg)](https://github.com/wenqingyu/magic-cc-codex-worker/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen)](.nvmrc)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](tsconfig.json)
@@ -18,7 +19,7 @@ codex --version          # any 0.122.0+ works
 which codex mcp-server   # should print a path
 
 # Install
-git clone https://github.com/<you>/magic-cc-codex-worker
+git clone https://github.com/wenqingyu/magic-cc-codex-worker
 cd magic-cc-codex-worker
 npm install && npm run build
 

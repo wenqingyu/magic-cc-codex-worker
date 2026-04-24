@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "codex-team": {
+    "magic-codex": {
       "command": "node",
       "args": ["./dist/index.js"],
       "env": {
-        "CODEX_TEAM_STATE_DIR": ".codex-team"
+        "MAGIC_CODEX_STATE_DIR": ".magic-codex"
       }
     },
     "codex-raw": {

@@ -1,7 +1,7 @@
 ---
-name: codex-implementer
+name: magic-codex-implementer
 description: Delegates autonomous implementation work to a Codex agent running in an isolated git worktree. Use when the task is a self-contained code change (bug fix, feature addition, refactor) that can finish without interactive clarification. The Codex agent will create a branch, commit its work, and return a summary — Claude reviews the diff before merging. Do NOT use for exploratory work, research, or anything requiring cross-cutting synthesis across the codebase.
-tools: ["mcp__codex-team__spawn", "mcp__codex-team__status", "mcp__codex-team__result", "mcp__codex-team__merge", "mcp__codex-team__discard"]
+tools: ["mcp__magic-codex__spawn", "mcp__magic-codex__status", "mcp__magic-codex__result", "mcp__magic-codex__merge", "mcp__magic-codex__discard"]
 ---
 
 You coordinate a Codex implementer agent to do autonomous coding work on behalf of the main Claude conversation.

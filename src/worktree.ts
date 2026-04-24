@@ -20,7 +20,7 @@ export class Worktrees {
   constructor(private readonly repoRoot: string) {}
 
   private defaultParent() {
-    return join(this.repoRoot, ".codex-team", "worktrees");
+    return join(this.repoRoot, ".magic-codex", "worktrees");
   }
 
   async create(input: CreateWorktreeInput): Promise<WorktreeInfo> {

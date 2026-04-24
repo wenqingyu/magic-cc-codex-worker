@@ -117,10 +117,10 @@ describe("Orchestrator — Magic Flow integration", () => {
     const workersFile = join(repo, "ops", "workers.json");
     expect(existsSync(workersFile)).toBe(true);
     const parsed = JSON.parse(readFileSync(workersFile, "utf8"));
-    const key = `codex-team:${res.agent_id}`;
+    const key = `magic-codex:${res.agent_id}`;
     expect(parsed.workers[key]).toBeDefined();
     expect(parsed.workers[key].status).toBe("completed");
-    expect(parsed.workers[key].kind).toBe("codex-team");
+    expect(parsed.workers[key].kind).toBe("magic-codex");
   });
 
   it("injects mfConventions into developer_instructions when present", async () => {

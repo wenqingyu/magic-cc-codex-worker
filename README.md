@@ -63,7 +63,7 @@ Picks one plugin out of the catalog and attaches it to your Claude Code session.
 
 #### Step 3 — Restart Claude Code
 
-The plugin activates on the next session. After restart, run `/codex-status` to confirm — should return an empty agent list, and the 9 `codex-team` MCP tools should be registered.
+The plugin activates on the next session. After restart, run `/magic-codex-status` to confirm — should return an empty agent list, and the 9 `magic-codex` MCP tools should be registered.
 
 That's it: no clone, no build, no config on your side. Claude Code fetches the repo, reads `.claude-plugin/marketplace.json`, and installs the plugin with its prebuilt `dist/`, commands, and agents.
 
@@ -81,12 +81,12 @@ Node / git / npm are only required if you want to **develop** the plugin — see
 ### First run
 
 ```
-/codex-spawn implementer "Add rate limiting to /api/upload"
+/magic-codex-spawn implementer "Add rate limiting to /api/upload"
 # → returns agent_id, e.g. codex-impl-ab12cd
 
-/codex-status                       # see all agents
-/codex-status codex-impl-ab12cd     # single agent
-/codex-merge codex-impl-ab12cd      # merge the worktree back when done
+/magic-codex-status                       # see all agents
+/magic-codex-status codex-impl-ab12cd     # single agent
+/magic-codex-merge codex-impl-ab12cd      # merge the worktree back when done
 ```
 
 That's the whole loop: spawn → poll → merge.
@@ -96,9 +96,9 @@ That's the whole loop: spawn → poll → merge.
 ## Capabilities
 
 - **Parallel task execution** — spawn N Codex workers that all run at once, each in its own sandboxed branch.
-- **Isolated experimentation** — try multiple approaches to the same task; `/codex-merge` the winner, `/codex-discard` the rest. Your main tree is never at risk.
+- **Isolated experimentation** — try multiple approaches to the same task; `/magic-codex-merge` the winner, `/magic-codex-discard` the rest. Your main tree is never at risk.
 - **Best-result selection** — review each worker's diff independently before anything lands.
-- **Resumable sessions** — worker finished but you need a follow-up? `/codex-resume <agent_id>` continues the same Codex thread.
+- **Resumable sessions** — worker finished but you need a follow-up? `/magic-codex-resume <agent_id>` continues the same Codex thread.
 - **Dual-model review** — spawn a Codex reviewer on a PR; read its report alongside your own Claude review.
 - **Multi-agent workflows** — fan out a Linear epic to one worker per child issue; collect results as a batch.
 
@@ -107,7 +107,7 @@ That's the whole loop: spawn → poll → merge.
 The plugin bundles two MCP servers:
 
 1. **`codex mcp-server`** (from Codex itself) — exposed as-is for the sub-60s synchronous fast path.
-2. **`codex-team`** (this project) — async orchestration: spawn in background, track state, manage git worktrees, enforce timeouts, route results back.
+2. **`magic-codex`** (this project) — async orchestration: spawn in background, track state, manage git worktrees, enforce timeouts, route results back.
 
 Every implementer-role worker runs in its own git worktree so parallel workers never clobber each other's edits. Reviewer-role workers run read-only, optionally inside a detached worktree at a PR's head SHA.
 
@@ -133,23 +133,23 @@ Plus the raw `codex` / `codex-reply` tools from `codex mcp-server`.
 
 | Command | Purpose |
 |---|---|
-| `/codex-spawn <role> <prompt>` | Launch an agent. |
-| `/codex-status [agent_id]` | Compact progress table. |
-| `/codex-resume <agent_id> <prompt>` | Continue a terminal agent. |
-| `/codex-cancel <agent_id> [--force]` | Kill + optional cleanup. |
-| `/codex-merge <agent_id>` | Merge back. |
-| `/codex-discard <agent_id>` | Remove worktree + branch. |
-| `/codex-review-pr <pr_number>` | Dual-model code review for a PR. |
-| `/codex-fan-out <EPIC-NNN>` | Parallel implementer-per-child for an epic. |
-| `/codex-mode [minimal\|balance\|max]` | View/set delegation level. |
+| `/magic-codex-spawn <role> <prompt>` | Launch an agent. |
+| `/magic-codex-status [agent_id]` | Compact progress table. |
+| `/magic-codex-resume <agent_id> <prompt>` | Continue a terminal agent. |
+| `/magic-codex-cancel <agent_id> [--force]` | Kill + optional cleanup. |
+| `/magic-codex-merge <agent_id>` | Merge back. |
+| `/magic-codex-discard <agent_id>` | Remove worktree + branch. |
+| `/magic-codex-review-pr <pr_number>` | Dual-model code review for a PR. |
+| `/magic-codex-fan-out <EPIC-NNN>` | Parallel implementer-per-child for an epic. |
+| `/magic-codex-mode [minimal\|balance\|max]` | View/set delegation level. |
 
 ## Subagents
 
 For `Agent({ subagent_type: "...", ... })` dispatch:
 
-- `codex-implementer` — autonomous worktree work + diff review
-- `codex-reviewer` — read-only dual-model review
-- `codex-planner` — plan-only output for comparison
+- `magic-codex-implementer` — autonomous worktree work + diff review
+- `magic-codex-reviewer` — read-only dual-model review
+- `magic-codex-planner` — plan-only output for comparison
 
 ---
 
@@ -167,11 +167,11 @@ Set via (precedence: env > project > user > default):
 
 ```bash
 # Env
-export CODEX_TEAM_DELEGATION_LEVEL=max
+export MAGIC_CODEX_DELEGATION_LEVEL=max
 ```
 
 ```toml
-# codex-team.toml (project root, committed)
+# magic-codex.toml (project root, committed)
 [delegation]
 level = "balance"
 ```
@@ -194,7 +194,7 @@ Built-in presets (`src/roles/defaults/`):
 **Model selection.** By default, each role inherits whatever model your `~/.codex/config.toml` selects. Override per-role or per-spawn:
 
 ```toml
-# codex-team.toml
+# magic-codex.toml
 [roles.implementer]
 model = "gpt-5-codex"        # or whatever Codex accepts
 
@@ -218,11 +218,11 @@ Per-spawn override:
 ## PR review flow
 
 ```
-/codex-review-pr 456
+/magic-codex-review-pr 456
 ```
 
 1. Plugin runs `gh pr view 456 --json headRefOid,headRefName,baseRefName,title,url`.
-2. Creates a **detached** git worktree at the PR's head SHA under `.codex-team/worktrees/<agent_id>`.
+2. Creates a **detached** git worktree at the PR's head SHA under `.magic-codex/worktrees/<agent_id>`.
 3. Starts Codex with `sandbox: read-only`, `cwd` = that worktree, plus PR context injected into `developer_instructions`.
 
 The reviewer now has a real filesystem checkout — can grep, read tests, inspect code context — not just a diff blob. Pair with your own review (Claude directly or a separate review skill) for two independent perspectives.
@@ -244,8 +244,8 @@ To opt out: remove those markers. The plugin works cleanly outside MF projects.
 
 ## State
 
-- `.codex-team/state.json` (gitignored) — agent registry, status, `thread_id`s, worktree info. Survives MCP restarts.
-- `.codex-team/worktrees/<agent_id>/` — per-agent worktrees. Preserved after completion until `/codex-merge` or `/codex-discard`.
+- `.magic-codex/state.json` (gitignored) — agent registry, status, `thread_id`s, worktree info. Survives MCP restarts.
+- `.magic-codex/worktrees/<agent_id>/` — per-agent worktrees. Preserved after completion until `/magic-codex-merge` or `/magic-codex-discard`.
 - `ops/workers.json` — MF-mode worker registry mirror.
 
 ---
@@ -255,12 +255,12 @@ To opt out: remove those markers. The plugin works cleanly outside MF projects.
 All files optional. Merged in this order (highest precedence last):
 
 1. `src/roles/defaults/*.toml` (built-in)
-2. `~/.codex-team/config.toml` (user-global)
-3. `<repo>/codex-team.toml` (project-committed)
-4. `<repo>/.codex-team/roles.toml` (project-personal, gitignored)
+2. `~/.magic-codex/config.toml` (user-global)
+3. `<repo>/magic-codex.toml` (project-committed)
+4. `<repo>/.magic-codex/roles.toml` (project-personal, gitignored)
 5. Per-spawn `overrides`
 
-Full example — [`codex-team.toml.example`](codex-team.toml.example).
+Full example — [`magic-codex.toml.example`](magic-codex.toml.example).
 
 ---
 
@@ -304,7 +304,7 @@ Full architecture: [`docs/plans/2026-04-24-magic-cc-codex-worker-design.md`](doc
 ## Safety notes
 
 - Implementer role uses `sandbox: workspace-write` — Codex can write files in the worktree but is kept out of the main tree. Use `danger-full-access` only if you really know what you're asking for.
-- Review every worktree diff before `/codex-merge`.
+- Review every worktree diff before `/magic-codex-merge`.
 - The plugin never pushes to remotes on its own. PR creation is deliberately left to the user.
 - The plugin never talks to Linear or GitHub unless you've provided credentials (`LINEAR_API_KEY`, `gh auth`).
 

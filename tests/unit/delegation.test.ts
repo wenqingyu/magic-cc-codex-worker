@@ -20,7 +20,7 @@ describe("resolveDelegationPolicy", () => {
   });
 
   it("env override wins over everything", async () => {
-    const projectFile = join(tmp, "codex-team.toml");
+    const projectFile = join(tmp, "magic-codex.toml");
     writeFileSync(projectFile, `[delegation]\nlevel = "minimal"\n`);
     const p = await resolveDelegationPolicy({
       projectConfigPath: projectFile,

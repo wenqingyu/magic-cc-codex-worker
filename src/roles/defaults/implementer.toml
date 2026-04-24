@@ -1,6 +1,6 @@
 [role]
 # model omitted — inherits your configured Codex default (see ~/.codex/config.toml).
-# Override per-project in codex-team.toml [roles.implementer] model = "...".
+# Override per-project in magic-codex.toml [roles.implementer] model = "...".
 sandbox = "workspace-write"
 approval_policy = "never"
 worktree = true

@@ -2,10 +2,27 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.0] — 2026-04-24
+
+### Changed (breaking)
+- **All user-facing identifiers renamed to `magic-codex-*`** to avoid conflict with any current or future third-party `codex-*` plugins (notably OpenAI's official Codex plugin, if and when it ships). Concrete renames:
+  - **Slash commands:** `/codex-spawn` → `/magic-codex-spawn`, `/codex-status` → `/magic-codex-status`, `/codex-resume` → `/magic-codex-resume`, `/codex-cancel` → `/magic-codex-cancel`, `/codex-merge` → `/magic-codex-merge`, `/codex-discard` → `/magic-codex-discard`, `/codex-review-pr` → `/magic-codex-review-pr`, `/codex-fan-out` → `/magic-codex-fan-out`, `/codex-mode` → `/magic-codex-mode`.
+  - **Subagents:** `codex-implementer` → `magic-codex-implementer`, `codex-reviewer` → `magic-codex-reviewer`, `codex-planner` → `magic-codex-planner`.
+  - **MCP server:** `codex-team` → `magic-codex`. Exposed tool names (`spawn`, `status`, `result`, `resume`, `cancel`, `list`, `merge`, `discard`, `get_delegation_policy`) unchanged; their fully-qualified form is now `mcp__magic-codex__<tool>`.
+  - **Env vars:** `CODEX_TEAM_DELEGATION_LEVEL` → `MAGIC_CODEX_DELEGATION_LEVEL`, `CODEX_TEAM_STATE_DIR` → `MAGIC_CODEX_STATE_DIR`.
+  - **Config files:** `codex-team.toml` → `magic-codex.toml` (project-level config).
+  - **State directory:** `.codex-team/` → `.magic-codex/` (persistent agent registry + worktree parent). Fresh installs land at the new path; existing `.codex-team/` state does not migrate automatically.
+  - **Workers.json worker kind:** `kind: "codex-team"` → `kind: "magic-codex"` (MF integration).
+
+The raw Codex MCP server (`codex-raw`, exposing `codex` / `codex-reply`) is unchanged — that's the upstream server name.
+
+### Upgrade notes
+Users on 0.2.6 should `/plugin marketplace remove magic-cc-codex-worker` + re-add + re-install to pick up the new command surface. Any `codex-team.toml` project config should be renamed to `magic-codex.toml`. Any scripts referencing `/codex-*` slash commands or `CODEX_TEAM_*` env vars need updating.
+
 ## [0.2.6] — 2026-04-24
 
 ### Fixed
-- **Critical:** Slash commands (`/codex-spawn`, `/codex-status`, etc.) were registered but never exposed as user-invokable because command files were missing the `disable-model-invocation: true` frontmatter flag. Without it, Claude Code loads each `.md` as a model-invoked skill instead of a user-facing slash command — so the install appeared successful but typing `/codex-status` did nothing. Added the flag to all 9 command files.
+- **Critical:** Slash commands (`/magic-codex-spawn`, `/magic-codex-status`, etc.) were registered but never exposed as user-invokable because command files were missing the `disable-model-invocation: true` frontmatter flag. Without it, Claude Code loads each `.md` as a model-invoked skill instead of a user-facing slash command — so the install appeared successful but typing `/magic-codex-status` did nothing. Added the flag to all 9 command files.
 
 ## [0.2.5] — 2026-04-24
 
@@ -75,8 +92,8 @@ All notable changes documented here. Format follows [Keep a Changelog](https://k
 ### Added
 - `merge` tool: merges completed agent's worktree branch back into base_ref (squash/ff/rebase). Removes worktree after unless `keep_worktree: true`.
 - `discard` tool: removes a terminal agent's worktree + deletes its branch. Requires cancel first if still running.
-- Slash commands (8): `/codex-spawn`, `/codex-status`, `/codex-resume`, `/codex-cancel`, `/codex-merge`, `/codex-discard`, `/codex-review-pr`, `/codex-mode`.
-- Subagent definitions (3): `codex-implementer`, `codex-reviewer`, `codex-planner`.
+- Slash commands (8): `/magic-codex-spawn`, `/magic-codex-status`, `/magic-codex-resume`, `/magic-codex-cancel`, `/magic-codex-merge`, `/magic-codex-discard`, `/magic-codex-review-pr`, `/magic-codex-mode`.
+- Subagent definitions (3): `magic-codex-implementer`, `magic-codex-reviewer`, `magic-codex-planner`.
 
 ## [0.0.2] — 2026-04-24
 
@@ -90,7 +107,7 @@ All notable changes documented here. Format follows [Keep a Changelog](https://k
 
 ### Added
 - Walking skeleton: `spawn`, `status`, `result`, `get_delegation_policy`.
-- Async spawn with background task; registry persists to `.codex-team/state.json`.
+- Async spawn with background task; registry persists to `.magic-codex/state.json`.
 - Git worktree lifecycle for implementer role.
 - TOML role presets (implementer / reviewer / planner / generic) with precedence merge.
 - Delegation policy (minimal / balance / max) exposed so Claude reads it at session start.

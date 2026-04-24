@@ -6,7 +6,7 @@ export class Worktrees {
         this.repoRoot = repoRoot;
     }
     defaultParent() {
-        return join(this.repoRoot, ".codex-team", "worktrees");
+        return join(this.repoRoot, ".magic-codex", "worktrees");
     }
     async create(input) {
         const parent = input.parent_dir ?? this.defaultParent();

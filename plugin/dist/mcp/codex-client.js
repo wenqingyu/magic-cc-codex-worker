@@ -13,7 +13,7 @@ export class CodexChild {
             args: ["mcp-server"],
             stderr: "pipe",
         });
-        this.client = new Client({ name: "magic-cc-codex-worker", version: "0.0.1" }, { capabilities: {} });
+        this.client = new Client({ name: "magic-codex", version: "0.3.0" }, { capabilities: {} });
         await this.client.connect(this.transport);
     }
     async call(input) {

@@ -29,7 +29,7 @@ export class Orchestrator {
             },
         });
         // preset.model may be undefined — we pass it through and let codex mcp-server
-        // use its own configured default. Override via codex-team.toml or overrides.model.
+        // use its own configured default. Override via magic-codex.toml or overrides.model.
         const model = preset.model;
         const baseRef = input.base_ref ?? "main";
         const rec = await this.opts.registry.create({

@@ -8,4 +8,4 @@ Parse `$ARGUMENTS`: first token is `agent_id`. Optional flags:
 - `--keep-worktree` (don't auto-remove after)
 - `--message "commit msg"` (for squash strategy)
 
-Call `codex-team` MCP tool `merge`. On success, show the merged SHA and base ref. On conflict or other failure, surface the error and suggest manual resolution inside the worktree.
+Call `magic-codex` MCP tool `merge`. On success, show the merged SHA and base ref. On conflict or other failure, surface the error and suggest manual resolution inside the worktree.

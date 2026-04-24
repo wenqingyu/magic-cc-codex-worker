@@ -4,13 +4,13 @@ import { dirname, join } from "node:path";
 import type { AgentRecord } from "../types.js";
 
 /**
- * Mirrors codex-team agents into ops/workers.json using a schema compatible
+ * Mirrors magic-codex agents into ops/workers.json using a schema compatible
  * with Magic Flow's worker registry. MF's dispatcher and /mf-status read this.
  */
 
 export interface WorkerEntry {
   worker_id: string;
-  kind: "codex-team";
+  kind: "magic-codex";
   agent_id: string;
   role: string;
   status: string;
@@ -59,10 +59,10 @@ export class WorkersMirror {
 
   async upsertFromRecord(rec: AgentRecord): Promise<void> {
     const data = await this.load();
-    const worker_id = `codex-team:${rec.agent_id}`;
+    const worker_id = `magic-codex:${rec.agent_id}`;
     data.workers[worker_id] = {
       worker_id,
-      kind: "codex-team",
+      kind: "magic-codex",
       agent_id: rec.agent_id,
       role: rec.role,
       status: rec.status,
@@ -80,7 +80,7 @@ export class WorkersMirror {
 
   async remove(agent_id: string): Promise<void> {
     const data = await this.load();
-    delete data.workers[`codex-team:${agent_id}`];
+    delete data.workers[`magic-codex:${agent_id}`];
     await this.persist(data);
   }
 }

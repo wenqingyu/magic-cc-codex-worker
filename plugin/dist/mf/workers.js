@@ -32,10 +32,10 @@ export class WorkersMirror {
     }
     async upsertFromRecord(rec) {
         const data = await this.load();
-        const worker_id = `codex-team:${rec.agent_id}`;
+        const worker_id = `magic-codex:${rec.agent_id}`;
         data.workers[worker_id] = {
             worker_id,
-            kind: "codex-team",
+            kind: "magic-codex",
             agent_id: rec.agent_id,
             role: rec.role,
             status: rec.status,
@@ -52,7 +52,7 @@ export class WorkersMirror {
     }
     async remove(agent_id) {
         const data = await this.load();
-        delete data.workers[`codex-team:${agent_id}`];
+        delete data.workers[`magic-codex:${agent_id}`];
         await this.persist(data);
     }
 }

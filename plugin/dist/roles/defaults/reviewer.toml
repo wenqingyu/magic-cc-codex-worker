@@ -1,6 +1,6 @@
 [role]
 # model omitted — inherits Codex default. For reviewer it's valuable to force
-# a strong reasoning model explicitly, e.g. model = "gpt-5" in codex-team.toml.
+# a strong reasoning model explicitly, e.g. model = "gpt-5" in magic-codex.toml.
 sandbox = "read-only"
 approval_policy = "never"
 worktree = false

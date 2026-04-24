@@ -5,4 +5,4 @@ disable-model-invocation: true
 
 Parse `$ARGUMENTS`. First token is the agent_id. If `--force` appears anywhere, pass `force: true` (also removes the worktree + branch).
 
-Call `codex-team` MCP tool `cancel` and report whether the worktree was preserved (the default) so the user can still inspect partial work.
+Call `magic-codex` MCP tool `cancel` and report whether the worktree was preserved (the default) so the user can still inspect partial work.

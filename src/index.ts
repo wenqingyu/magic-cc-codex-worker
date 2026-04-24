@@ -108,12 +108,12 @@ const DiscardInputZ = z.object({ agent_id: z.string() });
 
 async function main() {
   const repoRoot = await detectRepoRoot();
-  const stateDir = process.env.CODEX_TEAM_STATE_DIR
-    ? resolve(repoRoot, process.env.CODEX_TEAM_STATE_DIR)
-    : join(repoRoot, ".codex-team");
+  const stateDir = process.env.MAGIC_CODEX_STATE_DIR
+    ? resolve(repoRoot, process.env.MAGIC_CODEX_STATE_DIR)
+    : join(repoRoot, ".magic-codex");
   const rolesDir = join(__dirname, "roles", "defaults");
-  const projectConfigPath = join(repoRoot, "codex-team.toml");
-  const userConfigPath = join(homedir(), ".codex-team", "config.toml");
+  const projectConfigPath = join(repoRoot, "magic-codex.toml");
+  const userConfigPath = join(homedir(), ".magic-codex", "config.toml");
 
   const registry = new Registry(stateDir);
   const worktrees = new Worktrees(repoRoot);
@@ -140,7 +140,7 @@ async function main() {
   });
 
   const server = new Server(
-    { name: "codex-team", version: "0.0.1" },
+    { name: "magic-codex", version: "0.3.0" },
     { capabilities: { tools: {} } },
   );
 
@@ -408,7 +408,7 @@ async function main() {
       const policy = await resolveDelegationPolicy({
         projectConfigPath,
         userConfigPath,
-        envOverride: process.env.CODEX_TEAM_DELEGATION_LEVEL,
+        envOverride: process.env.MAGIC_CODEX_DELEGATION_LEVEL,
       });
       return {
         content: [{ type: "text", text: JSON.stringify(policy, null, 2) }],
@@ -421,11 +421,11 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // eslint-disable-next-line no-console
-  console.error("codex-team MCP server listening on stdio");
+  console.error("magic-codex MCP server listening on stdio");
 }
 
 main().catch((err) => {
   // eslint-disable-next-line no-console
-  console.error("codex-team MCP fatal:", err);
+  console.error("magic-codex MCP fatal:", err);
   process.exit(1);
 });

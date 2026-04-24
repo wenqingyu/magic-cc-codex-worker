@@ -43,8 +43,8 @@ describe("WorkersMirror", () => {
     const path = join(repo, "ops", "workers.json");
     expect(existsSync(path)).toBe(true);
     const parsed = JSON.parse(readFileSync(path, "utf8"));
-    expect(parsed.workers["codex-team:codex-impl-abc"].role).toBe("implementer");
-    expect(parsed.workers["codex-team:codex-impl-abc"].branch).toBe("codex/abc");
+    expect(parsed.workers["magic-codex:codex-impl-abc"].role).toBe("implementer");
+    expect(parsed.workers["magic-codex:codex-impl-abc"].branch).toBe("codex/abc");
   });
 
   it("upsert idempotent — subsequent calls update the entry in place", async () => {
@@ -54,7 +54,7 @@ describe("WorkersMirror", () => {
     const path = join(repo, "ops", "workers.json");
     const parsed = JSON.parse(readFileSync(path, "utf8"));
     expect(Object.keys(parsed.workers)).toHaveLength(1);
-    expect(parsed.workers["codex-team:codex-impl-abc"].status).toBe("completed");
+    expect(parsed.workers["magic-codex:codex-impl-abc"].status).toBe("completed");
   });
 
   it("remove deletes the entry", async () => {
@@ -84,6 +84,6 @@ describe("WorkersMirror", () => {
     await wm.upsertFromRecord(sampleRecord());
     const parsed = JSON.parse(readFileSync(path, "utf8"));
     expect(Object.keys(parsed.workers)).toContain("cyrus:something");
-    expect(Object.keys(parsed.workers)).toContain("codex-team:codex-impl-abc");
+    expect(Object.keys(parsed.workers)).toContain("magic-codex:codex-impl-abc");
   });
 });

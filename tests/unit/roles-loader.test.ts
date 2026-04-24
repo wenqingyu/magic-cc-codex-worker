@@ -38,7 +38,7 @@ describe("loadRole — precedence", () => {
   afterEach(() => rmSync(tmp, { recursive: true, force: true }));
 
   it("project committed overrides defaults; per-spawn overrides both", async () => {
-    const projectFile = join(tmp, "codex-team.toml");
+    const projectFile = join(tmp, "magic-codex.toml");
     writeFileSync(
       projectFile,
       `

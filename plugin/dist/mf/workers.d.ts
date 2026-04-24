@@ -1,11 +1,11 @@
 import type { AgentRecord } from "../types.js";
 /**
- * Mirrors codex-team agents into ops/workers.json using a schema compatible
+ * Mirrors magic-codex agents into ops/workers.json using a schema compatible
  * with Magic Flow's worker registry. MF's dispatcher and /mf-status read this.
  */
 export interface WorkerEntry {
     worker_id: string;
-    kind: "codex-team";
+    kind: "magic-codex";
     agent_id: string;
     role: string;
     status: string;

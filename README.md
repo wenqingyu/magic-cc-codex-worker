@@ -3,7 +3,7 @@
 ### Parallel Codex workers inside Claude Code.
 
 [![CI](https://github.com/wenqingyu/magic-cc-codex-worker/actions/workflows/ci.yml/badge.svg)](https://github.com/wenqingyu/magic-cc-codex-worker/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Noncommercial-purple.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen)](.nvmrc)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](tsconfig.json)
 
@@ -316,6 +316,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Tests required; strict TypeScript; small
 
 ## License
 
-[MIT](LICENSE) © magic-cc-codex-worker contributors.
+**[PolyForm Noncommercial 1.0.0](LICENSE)** © 2026 Wenqing Yu.
+
+- **Free** for independent developers, hobby projects, research, education, and nonprofits — use, modify, redistribute freely, as long as attribution is preserved.
+- **Commercial use** (for-profit companies, SaaS integrations, reselling, or public distribution of derivative products) requires a separate license. See [COMMERCIAL.md](COMMERCIAL.md) for how to request one — most cases are fast and friendly.
+- **Derivative work / substantial idea borrowing**: please reference this project in your README (`Based on magic-cc-codex-worker by Wenqing Yu`). It's appreciated, and required under the license when you copy substantial code.
+
+If in doubt — open an issue and ask. We'd rather approve a use case than turn anyone away for paperwork.
 
 Part of **Magic Stack** — an agent-autonomous development stack for production-ready projects. This plugin is its multi-agent bridge between Claude Code and the Codex ecosystem.

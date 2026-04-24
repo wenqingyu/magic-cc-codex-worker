@@ -5,19 +5,19 @@
   },
   "metadata": {
     "description": "Parallel Codex workers inside Claude Code.",
-    "version": "0.2.4"
+    "version": "0.2.5"
   },
   "plugins": [
     {
       "name": "magic-cc-codex-worker",
       "source": "./plugin",
       "description": "Parallel Codex workers inside Claude Code — multi-agent orchestration with git worktree isolation, resumable sessions, and dual-model PR review.",
-      "version": "0.2.4",
+      "version": "0.2.5",
       "author": {
         "name": "Wenqing Yu"
       },
       "homepage": "https://github.com/wenqingyu/magic-cc-codex-worker",
-      "license": "MIT",
+      "license": "PolyForm-Noncommercial-1.0.0",
       "keywords": ["codex", "mcp", "agent", "claude-code", "multi-agent", "parallel"],
       "category": "development",
       "tags": ["codex", "mcp", "multi-agent", "parallel", "orchestration", "claude-code"]

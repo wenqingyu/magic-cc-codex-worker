@@ -3,7 +3,7 @@
 ### 在 Claude Code 内并行运行 Codex workers。
 
 [![CI](https://github.com/wenqingyu/magic-cc-codex-worker/actions/workflows/ci.yml/badge.svg)](https://github.com/wenqingyu/magic-cc-codex-worker/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Noncommercial-purple.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen)](.nvmrc)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](tsconfig.json)
 
@@ -316,6 +316,12 @@ tests/unit/               # 62 个单元测试
 
 ## 许可证
 
-[MIT](LICENSE) © magic-cc-codex-worker contributors。
+**[PolyForm Noncommercial 1.0.0](LICENSE)** © 2026 Wenqing Yu。
+
+- **免费**用于独立开发者、业余项目、研究、教育、非营利组织 —— 可自由使用、修改、再分发,需保留出处声明。
+- **商业用途**(营利公司、SaaS 集成、转售、或衍生产品的公开分发)需要单独的商业许可。详见 [COMMERCIAL.md](COMMERCIAL.md) 了解申请方式 —— 大部分情况会被快速友好地批准。
+- **衍生作品 / 大量借用想法**:请在你的 README 中引用本项目(`Based on magic-cc-codex-worker by Wenqing Yu`)。这份感谢是我们重视的,并且在复制大量代码时许可证也要求这样做。
+
+有疑问直接开 issue 询问即可 —— 比起繁琐的手续,我们更愿意直接批准你的使用场景。
 
 **Magic Stack** 生态的一部分 —— 面向生产级项目的代理自主开发栈。本插件是它连接 Claude Code 与 Codex 生态的多代理桥梁。

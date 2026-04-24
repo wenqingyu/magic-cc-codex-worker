@@ -1,12 +1,12 @@
 {
   "name": "magic-cc-codex-worker",
-  "version": "0.2.4",
-  "description": "Orchestrate Codex as Claude Code agent workers — spawn, track, resume, review, merge Codex sessions from inside Claude Code.",
+  "version": "0.2.5",
+  "description": "Parallel Codex workers inside Claude Code — multi-agent orchestration with git worktree isolation, resumable sessions, and dual-model PR review.",
   "author": {
     "name": "Wenqing Yu",
     "url": "https://github.com/wenqingyu"
   },
   "homepage": "https://github.com/wenqingyu/magic-cc-codex-worker",
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "keywords": ["codex", "mcp", "agent", "claude-code"]
 }

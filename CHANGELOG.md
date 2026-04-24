@@ -2,6 +2,13 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.5] — 2026-04-24
+
+### Changed
+- **License changed from MIT → PolyForm Noncommercial 1.0.0.** Free for independent developers, hobbyists, researchers, and nonprofits (with attribution preserved). Commercial use — by for-profit companies, as part of SaaS offerings, or public redistribution of derivative products — now requires a separate commercial license. See [`COMMERCIAL.md`](./COMMERCIAL.md) for how to request one. Prior versions (0.2.0 – 0.2.4) remain MIT-licensed; anyone who already used them under MIT retains those rights for those versions.
+- [`COMMERCIAL.md`](./COMMERCIAL.md) added — explains who needs a commercial license, what attribution looks like, and how to request one (GitHub issue with `commercial-license` label).
+- README license sections (EN + zh-CN) rewritten to describe the new terms plainly.
+
 ## [0.2.4] — 2026-04-24
 
 ### Fixed

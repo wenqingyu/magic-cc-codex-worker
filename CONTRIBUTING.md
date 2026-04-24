@@ -46,3 +46,9 @@ Open a GitHub issue with:
 ## Reviewing PRs
 
 Maintainers look for: clear test coverage, strict types, docs updated if behavior visible to users, no secret-bearing files committed.
+
+## Licensing of your contributions
+
+By submitting a pull request you agree that your contribution will be distributed under the project's current license ([PolyForm Noncommercial 1.0.0](./LICENSE)). You retain copyright to your contribution; you grant the project maintainer a license broad enough to redistribute the combined work under the project license and any future dual / commercial license we may offer.
+
+If you want to license your contribution differently, say so in the PR and we'll figure it out before merging.

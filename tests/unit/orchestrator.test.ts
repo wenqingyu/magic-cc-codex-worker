@@ -250,6 +250,38 @@ describe("Orchestrator.spawn", () => {
     expect(logContents).toContain("sandbox: write blocked at /some/path");
   });
 
+  it("classifies rate-limit failures from codex stderr as error.kind='rate_limited'", async () => {
+    // 0.3.9: supervisors branch on error.kind to fall back to Sonnet
+    // subagents when codex hits its daily quota, instead of blind retry.
+    const factory = (opts?: { onStderr?: (chunk: Buffer) => void }) => {
+      return {
+        start: vi.fn().mockImplementation(async () => {
+          opts?.onStderr?.(
+            Buffer.from("ERROR: rate limit exceeded, try again later\n"),
+          );
+        }),
+        call: vi.fn().mockRejectedValue(new Error("tool call failed")),
+        stop: vi.fn().mockResolvedValue(undefined),
+        get pid() {
+          return 4242;
+        },
+      } as unknown as CodexChild;
+    };
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: factory,
+      rolesDir,
+      repoRoot: repo,
+    });
+    const res = await orch.spawn({ role: "implementer", prompt: "p" });
+    await orch.waitForAgent(res.agent_id);
+    const rec = await registry.get(res.agent_id);
+    expect(rec!.status).toBe("failed");
+    expect(rec!.error?.kind).toBe("rate_limited");
+    expect(rec!.error?.stderr_tail).toContain("rate limit exceeded");
+  });
+
   it("omits writable_roots for read-only roles (reviewer without PR)", async () => {
     const call = vi.fn().mockResolvedValue({ threadId: "t", content: "", raw: {} });
     const orch = new Orchestrator({

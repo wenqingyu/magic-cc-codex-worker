@@ -9,6 +9,7 @@ import type {
   SandboxMode,
 } from "./types.js";
 import type { CodexChild, CodexCallInput, CodexChildOptions } from "./mcp/codex-client.js";
+import { classifyError } from "./classify-error.js";
 import { loadRole } from "./roles/loader.js";
 import type { RolePreset } from "./roles/types.js";
 import { renderTemplate } from "./roles/templater.js";
@@ -474,12 +475,19 @@ export class Orchestrator {
       // best-effort; agent still runs if we can't open the log file
     }
     const trace = process.env.MAGIC_CODEX_TRACE === "1";
+    // Bounded in-memory tail of stderr, used by classifyError on failure
+    // (and surfaced on the AgentError). The log file keeps the full
+    // history; this is only the last ~16KB for classification heuristics.
+    const STDERR_TAIL_BYTES = 16 * 1024;
+    let stderrTail = "";
     const onStderr = (chunk: Buffer): void => {
       logStream?.write(chunk);
+      const text = chunk.toString("utf8");
+      stderrTail = (stderrTail + text).slice(-STDERR_TAIL_BYTES);
       if (trace) {
         // Prefix every line so interleaved output from parallel workers
         // is still attributable to a single agent.
-        const lines = chunk.toString("utf8").split(/\r?\n/);
+        const lines = text.split(/\r?\n/);
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
           if (i === lines.length - 1 && line === "") continue;
@@ -521,7 +529,18 @@ export class Orchestrator {
           ended_at: new Date().toISOString(),
           pid: null,
         };
-        if (finalStatus === "failed") patch.error = { message };
+        if (finalStatus === "failed") {
+          const kind = classifyError(message, stderrTail);
+          // Stash a short stderr tail on the record for supervisors who
+          // want to eyeball it without reading the full log file. Cap
+          // at 2KB — the tail here is purely informational.
+          const stderr_tail = stderrTail.slice(-2048) || undefined;
+          patch.error = {
+            message,
+            ...(stderr_tail ? { stderr_tail } : {}),
+            ...(kind ? { kind } : {}),
+          };
+        }
         const updated = await this.opts.registry.update(agent_id, patch);
         await this.mirrorWorker(updated);
       } finally {

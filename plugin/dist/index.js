@@ -25435,6 +25435,22 @@ var Worktrees = class {
 import { createWriteStream as createWriteStream2, mkdirSync, realpathSync } from "node:fs";
 import { join as join4 } from "node:path";
 
+// src/classify-error.ts
+function classifyError(message, stderrTail) {
+  const hay = `${message}
+${stderrTail}`.toLowerCase();
+  if (/\brate[ -]?limit(ed|ing)?\b/.test(hay) || /\bdaily (message )?limit\b/.test(hay) || /\busage limit\b/.test(hay) || /\bquota exceeded\b/.test(hay) || /\btoo many requests\b/.test(hay) || /\byou['']?ve (hit|reached) (your|the)\b.*\b(limit|quota)\b/.test(hay) || /\b429\b[^\n]{0,80}\b(too many|rate)\b/.test(hay)) {
+    return "rate_limited";
+  }
+  if (/\bsandbox\b[^\n]{0,120}\b(deny|denied|blocked|rejected)\b/.test(hay) || /\boperation not permitted\b[^\n]{0,120}\.git\b/.test(hay)) {
+    return "sandbox_denied";
+  }
+  if (/\btimeout after \d+s\b/.test(hay) || /-32001\b[^\n]*\btimed out\b/.test(hay) || /\brequest timed out\b/.test(hay)) {
+    return "timeout";
+  }
+  return null;
+}
+
 // src/roles/loader.ts
 import { readFile as readFile2 } from "node:fs/promises";
 import { join as join3 } from "node:path";
@@ -26444,10 +26460,14 @@ var Orchestrator = class {
     } catch {
     }
     const trace2 = process.env.MAGIC_CODEX_TRACE === "1";
+    const STDERR_TAIL_BYTES = 16 * 1024;
+    let stderrTail = "";
     const onStderr = (chunk) => {
       logStream?.write(chunk);
+      const text = chunk.toString("utf8");
+      stderrTail = (stderrTail + text).slice(-STDERR_TAIL_BYTES);
       if (trace2) {
-        const lines = chunk.toString("utf8").split(/\r?\n/);
+        const lines = text.split(/\r?\n/);
         for (let i2 = 0; i2 < lines.length; i2++) {
           const line = lines[i2];
           if (i2 === lines.length - 1 && line === "") continue;
@@ -26484,7 +26504,15 @@ var Orchestrator = class {
           ended_at: (/* @__PURE__ */ new Date()).toISOString(),
           pid: null
         };
-        if (finalStatus === "failed") patch.error = { message };
+        if (finalStatus === "failed") {
+          const kind = classifyError(message, stderrTail);
+          const stderr_tail = stderrTail.slice(-2048) || void 0;
+          patch.error = {
+            message,
+            ...stderr_tail ? { stderr_tail } : {},
+            ...kind ? { kind } : {}
+          };
+        }
         const updated = await this.opts.registry.update(agent_id, patch);
         await this.mirrorWorker(updated);
       } finally {
@@ -27386,7 +27414,7 @@ var CodexChild = class {
       stderr: "pipe"
     });
     this.client = new Client(
-      { name: "magic-codex", version: "0.3.8" },
+      { name: "magic-codex", version: "0.3.9" },
       { capabilities: {} }
     );
     await this.client.connect(this.transport);
@@ -27731,6 +27759,7 @@ function agentSummary(rec) {
     ended_at: rec.ended_at,
     last_output_preview: rec.last_output?.slice(0, 500) ?? null,
     error_summary: rec.error?.message ?? null,
+    error_kind: rec.error?.kind ?? null,
     stderr_log: rec.stderr_log ?? null
   };
 }
@@ -27825,7 +27854,7 @@ async function main() {
     mfConventions
   });
   const server = new Server(
-    { name: "magic-codex", version: "0.3.8" },
+    { name: "magic-codex", version: "0.3.9" },
     { capabilities: { tools: {} } }
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

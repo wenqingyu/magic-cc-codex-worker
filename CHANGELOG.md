@@ -2,6 +2,16 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.9] — 2026-04-25
+
+### Added
+- **Failure classification on `error.kind`.** When an agent fails, the orchestrator now attaches a coarse category to the error record: `rate_limited`, `sandbox_denied`, `timeout`, or `null`. The classifier reads the thrown error message and the tail of the captured codex stderr (0.3.8 wiring), matching a small set of conservative phrase regexes for each category. Rate-limit detection drives the ops pattern "codex quota → auto-fall back to Sonnet subagents" without per-run supervisor heuristics. Surfaced on the `status` tool as `error_kind` and on `result`'s `error.kind`. 15 classifier tests + 1 orchestrator end-to-end test cover positive matches, negatives that avoid false positives, and the failure-path wiring.
+- **`AgentError.stderr_tail`** — the last 2 KB of stderr is now stashed on the failure record for supervisors who want to eyeball the cause without reading the full log file. Full history still lives at `<stateDir>/logs/<agent_id>.codex.stderr`.
+
+### Notes
+- HEAD.lock intermittency remains open; still waiting on a captured stderr log from a failing batch to pinpoint the real cause. The new `sandbox_denied` classifier will flag those automatically once they surface.
+- No fix yet for: status-reporting lag vs actual commit time (shape TBD), Claude Code's own Agent-with-isolation-worktree race (upstream).
+
 ## [0.3.8] — 2026-04-25
 
 ### Added

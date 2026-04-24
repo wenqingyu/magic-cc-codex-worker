@@ -11,9 +11,15 @@ export interface WorktreeInfo {
   created_at: string;
 }
 
+/** Coarse classification of a failed agent. Used by supervisors to
+ *  decide whether to retry, fall back to a different backend, or give
+ *  up. `null`/unset means the failure didn't match any known pattern. */
+export type AgentErrorKind = "rate_limited" | "timeout" | "sandbox_denied";
+
 export interface AgentError {
   message: string;
   stderr_tail?: string;
+  kind?: AgentErrorKind | null;
 }
 
 export interface AgentRecord {

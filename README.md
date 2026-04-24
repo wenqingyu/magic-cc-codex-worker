@@ -1,6 +1,6 @@
 # magic-cc-codex-worker
 
-### Parallel Codex workers inside Claude Code.
+### Parallel OpenAI Codex workers inside Claude Code.
 
 [![CI](https://github.com/wenqingyu/magic-cc-codex-worker/actions/workflows/ci.yml/badge.svg)](https://github.com/wenqingyu/magic-cc-codex-worker/actions/workflows/ci.yml)
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Noncommercial-purple.svg)](LICENSE)
@@ -9,9 +9,9 @@
 
 **Languages:** English · [简体中文](README.cn.md)
 
-> **Turn Claude Code into a multi-agent coding system.** Delegate long-running implementation, reviews, and planning to a pool of Codex workers running in parallel, isolated git worktrees — without leaving your Claude Code session.
+> **Turn Claude Code into a multi-agent coding system powered by OpenAI Codex.** A zero-install Claude Code plugin for multi-agent orchestration — delegate implementation, code reviews, and planning to a pool of parallel Codex workers, each running in its own isolated git worktree, via the MCP (Model Context Protocol) standard.
 
-This is the bridge between two ecosystems: Claude stays in orchestrator mode (planning, synthesis, interactive work), Codex workers absorb the grunt work. You scale your throughput, preserve your Claude budget, and keep every worker's output reviewable before it touches your main tree.
+The bridge between Claude Code and the OpenAI Codex ecosystem: Claude stays in orchestrator mode (planning, synthesis, interactive work), Codex workers absorb the grunt work. Get dual-model PR review, resumable sessions across conversations, and role-based agent specialization — while preserving your Claude quota for what Claude does best.
 
 ## Why use this?
 
@@ -22,9 +22,9 @@ This is the bridge between two ecosystems: Claude stays in orchestrator mode (pl
 - 🎯 **Role-tuned, observable delegation.** Not a thin "forward the prompt" wrapper — a full orchestration layer with role-based specialization (implementer / reviewer / planner / generic), resumable sessions, per-role sandbox + timeout, and first-class session tracking in a persisted registry.
 - 🧰 **Production engineering.** 62 unit tests, strict TypeScript, CI on Node 20/22. Designed from an actual spike of Codex's MCP protocol — no stdout parsing, no brittle scraping. Git worktrees for parallelism, MCP protocol for transport, TOML for configuration, sandboxed execution for safety.
 
-## How it compares
+## How it compares to the official Codex plugin
 
-|                                       | Official Codex plugin | **magic-cc-codex-worker** |
+|                                       | Official OpenAI Codex plugin | **magic-cc-codex-worker** |
 |---------------------------------------|:---------------------:|:-------------------------:|
 | Single Codex session in Claude Code   | ✅                    | ✅                         |
 | Multi-agent orchestration             | ❌                    | ✅                         |
@@ -35,7 +35,7 @@ This is the bridge between two ecosystems: Claude stays in orchestrator mode (pl
 | Dual-model PR review                  | ❌                    | ✅                         |
 | Epic / batch fan-out                  | ❌                    | ✅                         |
 
-Official Codex plugin lets you **use** Codex. This plugin lets you **scale** Codex.
+OpenAI's official Codex plugin lets you **use** Codex. This plugin lets you **scale** Codex into a multi-agent coding system inside Claude Code.
 
 ---
 
@@ -313,6 +313,37 @@ Full architecture: [`docs/plans/2026-04-24-magic-cc-codex-worker-design.md`](doc
 - Review every worktree diff before `/magic-codex:merge`.
 - The plugin never pushes to remotes on its own. PR creation is deliberately left to the user.
 - The plugin never talks to Linear or GitHub unless you've provided credentials (`LINEAR_API_KEY`, `gh auth`).
+
+---
+
+## FAQ
+
+**How is this different from the official OpenAI Codex plugin for Claude Code?**
+The official plugin lets you run a single Codex session from inside Claude Code. This plugin is a full multi-agent orchestration layer — parallel Codex workers in isolated git worktrees, role-based specialization (implementer / reviewer / planner), resumable sessions via Codex's native `thread_id`, and dual-model PR review. See the comparison table above.
+
+**Does this work with GPT-5 and GPT-5-codex?**
+Yes. Each role defaults to whatever model your `~/.codex/config.toml` selects, and you can override per-role (in `magic-codex.toml`) or per-spawn (via the `overrides.model` argument). Any model the `codex` CLI accepts works.
+
+**Do parallel Codex workers conflict on the same files?**
+No. Every implementer-role worker runs in its own `git worktree` on its own branch. Three workers can edit the same file in three different ways and never see each other's changes. You review each diff and `/magic-codex:merge` the winner.
+
+**Can I use this in a commercial project?**
+See [LICENSE](LICENSE) and [COMMERCIAL.md](COMMERCIAL.md). The plugin is under PolyForm Noncommercial 1.0.0 — free for independent developers, research, education, and nonprofits; commercial use requires a separate license (low-friction — open a GitHub issue labeled `commercial-license`). Most commercial requests are approved quickly.
+
+**Does the plugin require a git repository to work?**
+Only for implementer / planner roles (they use git worktrees). Reviewer and generic roles run fine outside a repo. If you try to spawn an implementer outside a repo, the plugin errors clearly.
+
+**How do I stop a Codex worker that's gone off the rails?**
+`/magic-codex:cancel <agent_id>` kills the subprocess and marks the worker `cancelled` (not `failed` — the distinction is preserved). The worktree is kept for inspection unless you add `--force`.
+
+**Do I need to install Node.js or npm to use the plugin?**
+No. The plugin ships a single-file bundled MCP server (`plugin/dist/index.js`). The only runtime prerequisite is the `codex` CLI itself. Node is only required if you want to develop / modify the plugin.
+
+**What's the "delegation level" and why would I change it?**
+A policy knob that tells Claude how aggressively to offload work to Codex instead of doing it itself. `minimal` = prefer Claude; `max` = Claude becomes the orchestrator and routes everything Codex can handle to it. Run `/magic-codex:mode <level>` to set it user-globally. Useful when Claude quota is running low.
+
+**Does this integrate with Linear or GitHub Issues?**
+The plugin auto-detects [Magic Flow](#magic-flow-integration) projects and enriches agent context with Linear issue details when `LINEAR_API_KEY` is set and `issue_id` is passed. Plain GitHub Issues aren't first-class but the reviewer's PR-worktree mode uses `gh pr view` so GitHub PRs are fully supported.
 
 ---
 

@@ -1,6 +1,6 @@
 # magic-cc-codex-worker
 
-### 在 Claude Code 内并行运行 Codex workers。
+### 在 Claude Code 内并行运行 OpenAI Codex workers。
 
 [![CI](https://github.com/wenqingyu/magic-cc-codex-worker/actions/workflows/ci.yml/badge.svg)](https://github.com/wenqingyu/magic-cc-codex-worker/actions/workflows/ci.yml)
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Noncommercial-purple.svg)](LICENSE)
@@ -9,9 +9,9 @@
 
 **语言:** [English](README.md) · 简体中文
 
-> **把 Claude Code 变成一个多代理编码系统。** 把长时间运行的实现、审阅、规划任务委派给一池在并行、隔离的 git worktree 中运行的 Codex workers —— 无需离开 Claude Code 会话。
+> **把 Claude Code 变成由 OpenAI Codex 驱动的多代理编码系统。** 零安装的 Claude Code 插件,面向多代理编排 —— 通过 MCP(Model Context Protocol)协议,把实现、代码审阅、规划任务委派给一池并行、隔离在 git worktree 中运行的 Codex workers。
 
-这是两个生态之间的桥梁:Claude 专注于编排模式(规划、综合、交互式工作),Codex workers 承担繁重任务。你提高吞吐量、保留 Claude 预算,并且在任何 worker 的产出触碰主工作树之前都可以完整审阅。
+连接 Claude Code 与 OpenAI Codex 两个生态的桥梁:Claude 专注于编排模式(规划、综合、交互式工作),Codex workers 承担繁重任务。获得双模型 PR 审阅、跨会话可恢复的代理、基于角色的专业化 —— 同时保留 Claude 配额用于 Claude 最擅长的工作。
 
 ## 为什么使用它?
 
@@ -22,7 +22,7 @@
 - 🎯 **角色调优、可观察的委派。** 不是"转发提示词"的薄壳 —— 一整套编排层:基于角色(implementer / reviewer / planner / generic)的专业化、可恢复的会话、每角色独立的沙盒和超时、持久化注册表中的一流会话追踪。
 - 🧰 **生产级工程化。** 62 个单元测试、严格 TypeScript、CI 覆盖 Node 20/22。基于对 Codex 实际 MCP 协议的技术验证设计 —— 没有 stdout 解析,没有脆弱的抓取。并行靠 git worktree,传输靠 MCP 协议,配置靠 TOML,执行靠沙盒。
 
-## 与官方插件对比
+## 与 OpenAI 官方 Codex 插件对比
 
 |                                         | 官方 Codex 插件 | **magic-cc-codex-worker** |
 |-----------------------------------------|:---------------:|:-------------------------:|
@@ -313,6 +313,37 @@ tests/unit/               # 62 个单元测试
 - 在 `/magic-codex:merge` 之前务必审阅每个 worktree 的 diff。
 - 插件不会主动推送到远程。PR 创建被刻意留给用户。
 - 没有提供凭据(`LINEAR_API_KEY`、`gh auth`)时,插件不会访问 Linear 或 GitHub。
+
+---
+
+## 常见问题(FAQ)
+
+**它和 OpenAI 官方 Codex 插件有什么不同?**
+官方插件让你在 Claude Code 中运行一个 Codex 会话。本插件是一整套多代理编排层 —— 在隔离的 git worktree 中并行运行 Codex workers、基于角色的专业化(implementer / reviewer / planner)、通过 Codex 原生 `thread_id` 可恢复的会话、双模型 PR 审阅。对比表见上。
+
+**支持 GPT-5 和 GPT-5-codex 吗?**
+支持。每个角色默认继承你 `~/.codex/config.toml` 中的模型选择,也可以在角色级(`magic-codex.toml`)或单次调用级(`overrides.model`)覆盖。`codex` CLI 接受的任何模型都可用。
+
+**并行的 Codex workers 会对同一份文件产生冲突吗?**
+不会。每个 implementer worker 都运行在自己独立的 `git worktree` 和独立的分支上。三个 workers 可以用三种不同方式修改同一个文件,彼此互不可见。你审阅每个 diff,对优胜方案运行 `/magic-codex:merge`。
+
+**可以商用吗?**
+详见 [LICENSE](LICENSE) 和 [COMMERCIAL.md](COMMERCIAL.md)。插件基于 PolyForm Noncommercial 1.0.0 发布 —— 对独立开发者、研究、教育、非营利组织免费;商业用途需要单独的许可证(低门槛 —— 在 GitHub 开一个 `commercial-license` 标签的 issue 即可)。大多数商业申请会被快速批准。
+
+**必须在 git 仓库里用吗?**
+只有 implementer / planner 角色需要(它们使用 git worktree)。reviewer 和 generic 角色在仓库外也能正常运行。如果你在非仓库环境里启动 implementer,插件会清晰报错。
+
+**怎么中止一个失控的 Codex worker?**
+`/magic-codex:cancel <agent_id>` —— 杀掉子进程并把 worker 标记为 `cancelled`(而不是 `failed` —— 两者在语义上是分开的)。默认保留 worktree 以便你事后检查,加 `--force` 也一并删除。
+
+**使用插件需要安装 Node.js 或 npm 吗?**
+不需要。插件以单文件打包的 MCP server 形式发布(`plugin/dist/index.js`)。运行期唯一的前置条件是 `codex` CLI。只有当你想开发/修改插件本身时才需要 Node。
+
+**"委派级别"(delegation level)是什么?为什么要调整?**
+一个策略旋钮,告诉 Claude 应该多激进地把工作委派给 Codex 而不是自己做。`minimal` = Claude 优先;`max` = Claude 进入编排模式,把 Codex 能处理的一切都路由过去。用 `/magic-codex:mode <level>` 设置为用户全局级。在 Claude 配额告急时尤其有用。
+
+**集成 Linear 或 GitHub Issues 吗?**
+插件会自动识别 [Magic Flow](#magic-flow-集成) 项目,并在设置了 `LINEAR_API_KEY` 且传入 `issue_id` 时,用 Linear issue 的标题/描述/URL 增强代理上下文。纯 GitHub Issues 目前不是一等公民,但 reviewer 的 PR-worktree 模式基于 `gh pr view`,所以 GitHub PR 是完整支持的。
 
 ---
 

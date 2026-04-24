@@ -58,12 +58,12 @@ Tells Claude Code "this GitHub repo publishes a plugin catalog." It clones the r
 Picks one plugin out of the catalog and attaches it to your Claude Code session. The `<plugin-name>@<marketplace-name>` format disambiguates when a plugin name exists in multiple catalogs.
 
 ```text
-/plugin install magic-cc-codex-worker@magic-cc-codex-worker
+/plugin install magic-codex@magic-codex
 ```
 
 #### Step 3 — Restart Claude Code
 
-The plugin activates on the next session. After restart, run `/magic-codex-status` to confirm — should return an empty agent list, and the 9 `magic-codex` MCP tools should be registered.
+The plugin activates on the next session. After restart, run `/magic-codex:status` to confirm — should return an empty agent list, and the 9 `magic-codex` MCP tools should be registered.
 
 That's it: no clone, no build, no config on your side. Claude Code fetches the repo, reads `.claude-plugin/marketplace.json`, and installs the plugin with its prebuilt `dist/`, commands, and agents.
 
@@ -81,12 +81,12 @@ Node / git / npm are only required if you want to **develop** the plugin — see
 ### First run
 
 ```
-/magic-codex-spawn implementer "Add rate limiting to /api/upload"
+/magic-codex:spawn implementer "Add rate limiting to /api/upload"
 # → returns agent_id, e.g. codex-impl-ab12cd
 
-/magic-codex-status                       # see all agents
-/magic-codex-status codex-impl-ab12cd     # single agent
-/magic-codex-merge codex-impl-ab12cd      # merge the worktree back when done
+/magic-codex:status                       # see all agents
+/magic-codex:status codex-impl-ab12cd     # single agent
+/magic-codex:merge codex-impl-ab12cd      # merge the worktree back when done
 ```
 
 That's the whole loop: spawn → poll → merge.
@@ -96,9 +96,9 @@ That's the whole loop: spawn → poll → merge.
 ## Capabilities
 
 - **Parallel task execution** — spawn N Codex workers that all run at once, each in its own sandboxed branch.
-- **Isolated experimentation** — try multiple approaches to the same task; `/magic-codex-merge` the winner, `/magic-codex-discard` the rest. Your main tree is never at risk.
+- **Isolated experimentation** — try multiple approaches to the same task; `/magic-codex:merge` the winner, `/magic-codex:discard` the rest. Your main tree is never at risk.
 - **Best-result selection** — review each worker's diff independently before anything lands.
-- **Resumable sessions** — worker finished but you need a follow-up? `/magic-codex-resume <agent_id>` continues the same Codex thread.
+- **Resumable sessions** — worker finished but you need a follow-up? `/magic-codex:resume <agent_id>` continues the same Codex thread.
 - **Dual-model review** — spawn a Codex reviewer on a PR; read its report alongside your own Claude review.
 - **Multi-agent workflows** — fan out a Linear epic to one worker per child issue; collect results as a batch.
 
@@ -133,23 +133,23 @@ Plus the raw `codex` / `codex-reply` tools from `codex mcp-server`.
 
 | Command | Purpose |
 |---|---|
-| `/magic-codex-spawn <role> <prompt>` | Launch an agent. |
-| `/magic-codex-status [agent_id]` | Compact progress table. |
-| `/magic-codex-resume <agent_id> <prompt>` | Continue a terminal agent. |
-| `/magic-codex-cancel <agent_id> [--force]` | Kill + optional cleanup. |
-| `/magic-codex-merge <agent_id>` | Merge back. |
-| `/magic-codex-discard <agent_id>` | Remove worktree + branch. |
-| `/magic-codex-review-pr <pr_number>` | Dual-model code review for a PR. |
-| `/magic-codex-fan-out <EPIC-NNN>` | Parallel implementer-per-child for an epic. |
-| `/magic-codex-mode [minimal\|balance\|max]` | View/set delegation level. |
+| `/magic-codex:spawn <role> <prompt>` | Launch an agent. |
+| `/magic-codex:status [agent_id]` | Compact progress table. |
+| `/magic-codex:resume <agent_id> <prompt>` | Continue a terminal agent. |
+| `/magic-codex:cancel <agent_id> [--force]` | Kill + optional cleanup. |
+| `/magic-codex:merge <agent_id>` | Merge back. |
+| `/magic-codex:discard <agent_id>` | Remove worktree + branch. |
+| `/magic-codex:review-pr <pr_number>` | Dual-model code review for a PR. |
+| `/magic-codex:fan-out <EPIC-NNN>` | Parallel implementer-per-child for an epic. |
+| `/magic-codex:mode [minimal\|balance\|max]` | View/set delegation level. |
 
 ## Subagents
 
 For `Agent({ subagent_type: "...", ... })` dispatch:
 
-- `magic-codex-implementer` — autonomous worktree work + diff review
-- `magic-codex-reviewer` — read-only dual-model review
-- `magic-codex-planner` — plan-only output for comparison
+- `implementer` — autonomous worktree work + diff review
+- `reviewer` — read-only dual-model review
+- `planner` — plan-only output for comparison
 
 ---
 
@@ -218,7 +218,7 @@ Per-spawn override:
 ## PR review flow
 
 ```
-/magic-codex-review-pr 456
+/magic-codex:review-pr 456
 ```
 
 1. Plugin runs `gh pr view 456 --json headRefOid,headRefName,baseRefName,title,url`.
@@ -245,7 +245,7 @@ To opt out: remove those markers. The plugin works cleanly outside MF projects.
 ## State
 
 - `.magic-codex/state.json` (gitignored) — agent registry, status, `thread_id`s, worktree info. Survives MCP restarts.
-- `.magic-codex/worktrees/<agent_id>/` — per-agent worktrees. Preserved after completion until `/magic-codex-merge` or `/magic-codex-discard`.
+- `.magic-codex/worktrees/<agent_id>/` — per-agent worktrees. Preserved after completion until `/magic-codex:merge` or `/magic-codex:discard`.
 - `ops/workers.json` — MF-mode worker registry mirror.
 
 ---
@@ -304,7 +304,7 @@ Full architecture: [`docs/plans/2026-04-24-magic-cc-codex-worker-design.md`](doc
 ## Safety notes
 
 - Implementer role uses `sandbox: workspace-write` — Codex can write files in the worktree but is kept out of the main tree. Use `danger-full-access` only if you really know what you're asking for.
-- Review every worktree diff before `/magic-codex-merge`.
+- Review every worktree diff before `/magic-codex:merge`.
 - The plugin never pushes to remotes on its own. PR creation is deliberately left to the user.
 - The plugin never talks to Linear or GitHub unless you've provided credentials (`LINEAR_API_KEY`, `gh auth`).
 

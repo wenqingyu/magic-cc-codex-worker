@@ -1,18 +1,18 @@
 {
-  "name": "magic-cc-codex-worker",
+  "name": "magic-codex",
   "owner": {
     "name": "Wenqing Yu"
   },
   "metadata": {
     "description": "Parallel Codex workers inside Claude Code.",
-    "version": "0.3.0"
+    "version": "0.3.1"
   },
   "plugins": [
     {
-      "name": "magic-cc-codex-worker",
+      "name": "magic-codex",
       "source": "./plugin",
       "description": "Parallel Codex workers inside Claude Code — multi-agent orchestration with git worktree isolation, resumable sessions, and dual-model PR review.",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "author": {
         "name": "Wenqing Yu"
       },

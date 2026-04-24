@@ -1,5 +1,5 @@
 ---
-name: magic-codex-planner
+name: planner
 description: Delegates planning work to a Codex planner agent (read-only, no worktree). Use when you want a second pass on an implementation plan, or when plan creation itself would consume significant Claude context. The Codex planner returns a structured markdown plan the caller can review, adopt, or reject.
 tools: ["mcp__magic-codex__spawn", "mcp__magic-codex__status", "mcp__magic-codex__result"]
 ---

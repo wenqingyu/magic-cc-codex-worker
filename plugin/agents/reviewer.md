@@ -1,5 +1,5 @@
 ---
-name: magic-codex-reviewer
+name: reviewer
 description: Runs a Codex-powered read-only code review using a SOTA GPT model. Use as a second-opinion reviewer alongside Claude's own review for PRs, contentious diffs, or security-sensitive changes. Useful precisely because it's a different model family — it catches different classes of issues than Claude does.
 tools: ["mcp__magic-codex__spawn", "mcp__magic-codex__status", "mcp__magic-codex__result"]
 ---

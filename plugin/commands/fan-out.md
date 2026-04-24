@@ -12,7 +12,7 @@ Two modes based on `$ARGUMENTS`:
    - `prompt`: a clear task description from the child's title + description
    - `issue_id`: the child's identifier
 3. Collect all `agent_id`s. Report: "Spawned N agents for epic TEAM-100 children: [list]."
-4. Suggest polling via `/magic-codex-status` (no args → all-agents table) until all terminal.
+4. Suggest polling via `/magic-codex:status` (no args → all-agents table) until all terminal.
 
 **Mode 2: Inline list.** If `$ARGUMENTS` is a list of prompts separated by `---` or `;;`:
 1. Split into N prompts.

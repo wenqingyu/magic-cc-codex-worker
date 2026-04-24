@@ -2,6 +2,26 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.1] — 2026-04-24
+
+### Changed (breaking)
+- **Plugin + marketplace renamed** from `magic-cc-codex-worker` to `magic-codex`. The GitHub repo (and `/plugin marketplace add` URL) is still `wenqingyu/magic-cc-codex-worker`, but the plugin's declared name inside `plugin.json` and `marketplace.json` is now `magic-codex`. This shortens the auto-prefixed command surface from `/magic-cc-codex-worker:magic-codex-<verb>` (40 chars, double-prefixed) to `/magic-codex:<verb>` (~16 chars, clean).
+- **Command filenames shortened** from `magic-codex-<verb>.md` to `<verb>.md`. Commands now invoke as:
+  - `/magic-codex:spawn` · `/magic-codex:status` · `/magic-codex:resume`
+  - `/magic-codex:cancel` · `/magic-codex:merge` · `/magic-codex:discard`
+  - `/magic-codex:review-pr` · `/magic-codex:fan-out` · `/magic-codex:mode`
+- **Subagent names shortened** — `magic-codex-implementer` → `implementer`, `magic-codex-reviewer` → `reviewer`, `magic-codex-planner` → `planner` (they remain auto-namespaced by Claude Code as `magic-codex:implementer` etc. when invoked).
+- **Install command** is now `/plugin install magic-codex@magic-codex` (was `/plugin install magic-cc-codex-worker@magic-cc-codex-worker`).
+
+### Upgrade
+Users on 0.3.0 must clear the cache and reinstall:
+
+```
+/plugin marketplace remove magic-codex
+/plugin marketplace add wenqingyu/magic-cc-codex-worker
+/plugin install magic-codex@magic-codex
+```
+
 ## [0.3.0] — 2026-04-24
 
 ### Changed (breaking)

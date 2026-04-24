@@ -14,6 +14,6 @@ Parse `$ARGUMENTS` as `<pr_number>`. Build a spawn input:
 }
 ```
 
-Call `magic-codex` MCP tool `spawn`. Return the `agent_id` and the full Codex reviewer output once `/magic-codex-status` shows it completed.
+Call `magic-codex` MCP tool `spawn`. Return the `agent_id` and the full Codex reviewer output once `/magic-codex:status` shows it completed.
 
 Pair this with Claude's own review (either interactive or via `/mf-pr-reviewer` if present) to get a dual-model perspective — the Codex reviewer uses a different model stack and tends to flag different concerns.

@@ -2,6 +2,12 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.2] — 2026-04-24
+
+### Fixed
+- **Critical:** `marketplace.json` schema was invalid — was missing the required `owner` object and used `source: "."` (which Claude Code's parser rejects). Plugin install errored with `Failed to parse marketplace file: owner: Invalid input, plugins.0.source: Invalid input`. Fixed by adding `owner: { name: "Wenqing Yu" }` and using the canonical `{ source: "github", repo: "wenqingyu/magic-cc-codex-worker" }` source form. 0.2.0 and 0.2.1 both shipped with this broken marketplace — upgrade to 0.2.2 and re-install.
+- Top-level `description` moved into `metadata.description` per the marketplace schema.
+
 ## [0.2.1] — 2026-04-24
 
 ### Fixed

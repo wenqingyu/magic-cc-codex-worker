@@ -1,5 +1,6 @@
 ---
 description: Spawn a Codex reviewer agent against a specific PR
+disable-model-invocation: true
 ---
 
 Parse `$ARGUMENTS` as `<pr_number>`. Build a spawn input:

@@ -1,5 +1,6 @@
 ---
 description: Discard a terminal Codex agent's worktree and delete its branch
+disable-model-invocation: true
 ---
 
 Parse `$ARGUMENTS` as `<agent_id>`. Call `codex-team` MCP tool `discard`.

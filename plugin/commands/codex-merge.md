@@ -1,5 +1,6 @@
 ---
 description: Merge a completed Codex implementer's worktree back into its base_ref
+disable-model-invocation: true
 ---
 
 Parse `$ARGUMENTS`: first token is `agent_id`. Optional flags:

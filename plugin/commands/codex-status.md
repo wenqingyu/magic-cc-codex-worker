@@ -1,5 +1,6 @@
 ---
 description: Show status of Codex agents — one agent by id, or all
+disable-model-invocation: true
 ---
 
 If `$ARGUMENTS` contains an agent_id (starts with `codex-`), call the `codex-team` MCP `status` tool with `agent_id`. Otherwise call it with no args.

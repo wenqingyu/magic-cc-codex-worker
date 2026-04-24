@@ -1,5 +1,6 @@
 ---
 description: Continue a completed/failed/cancelled Codex agent with a new prompt
+disable-model-invocation: true
 ---
 
 Parse `$ARGUMENTS` as `<agent_id> <prompt...>`.

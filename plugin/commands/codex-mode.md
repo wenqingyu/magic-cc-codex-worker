@@ -1,5 +1,6 @@
 ---
 description: View or set the Codex delegation level (minimal/balance/max)
+disable-model-invocation: true
 ---
 
 If `$ARGUMENTS` is empty, call `codex-team` MCP tool `get_delegation_policy` and show the current level, its source (env/project/user/default), and a one-line summary of each level.

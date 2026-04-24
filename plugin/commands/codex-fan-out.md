@@ -1,5 +1,6 @@
 ---
 description: Fan out multiple Codex implementer agents in parallel, one per subtask or per Linear epic child
+disable-model-invocation: true
 ---
 
 Two modes based on `$ARGUMENTS`:

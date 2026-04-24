@@ -1,5 +1,6 @@
 ---
 description: Launch a Codex agent in the background (implementer/reviewer/planner/generic)
+disable-model-invocation: true
 ---
 
 Parse `$ARGUMENTS` as `<role> <prompt...>`. Valid roles: `implementer`, `reviewer`, `planner`, `generic`.

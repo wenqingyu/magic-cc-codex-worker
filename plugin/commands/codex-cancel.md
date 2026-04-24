@@ -1,5 +1,6 @@
 ---
 description: Cancel a running Codex agent (optionally --force to also remove its worktree)
+disable-model-invocation: true
 ---
 
 Parse `$ARGUMENTS`. First token is the agent_id. If `--force` appears anywhere, pass `force: true` (also removes the worktree + branch).

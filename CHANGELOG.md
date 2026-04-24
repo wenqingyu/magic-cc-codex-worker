@@ -2,6 +2,11 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.6] — 2026-04-24
+
+### Fixed
+- **Critical:** Slash commands (`/codex-spawn`, `/codex-status`, etc.) were registered but never exposed as user-invokable because command files were missing the `disable-model-invocation: true` frontmatter flag. Without it, Claude Code loads each `.md` as a model-invoked skill instead of a user-facing slash command — so the install appeared successful but typing `/codex-status` did nothing. Added the flag to all 9 command files.
+
 ## [0.2.5] — 2026-04-24
 
 ### Changed

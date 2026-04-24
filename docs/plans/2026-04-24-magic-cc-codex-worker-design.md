@@ -14,7 +14,33 @@ A Claude Code plugin that lets Claude Code orchestrate Codex as a pool of agent 
 2. **Parallelism** — fan out N independent tasks across N Codex workers.
 3. **Session continuity** — resume named agents across conversations.
 4. **Role specialization** — per-role model, sandbox, prompt, worktree policy. Enables use cases like "SOTA GPT reasoning model as a second-opinion PR reviewer."
-5. **Magic Flow integration (optional, auto-detected)** — when running inside an MF project, behave as a first-class MF worker (Linear issue flow, branch conventions, worker registry, hooks).
+5. **User-controlled delegation level** — a policy that tells Claude how aggressively to offload work to Codex (minimal / balance / max), letting the user balance Claude vs. Codex quota consumption.
+6. **Magic Flow integration (optional, auto-detected)** — when running inside an MF project, behave as a first-class MF worker (Linear issue flow, branch conventions, worker registry, hooks).
+
+## Delegation level — policy mechanism
+
+The plugin itself does not decide what to delegate — Claude does. But we give Claude a first-class policy signal so the user can control the Claude/Codex quota balance.
+
+### Levels
+
+| Level | Guidance to Claude |
+|---|---|
+| **`minimal`** | Delegate to Codex only when Codex offers capabilities Claude lacks or does notably better: (a) running a *separate-model* second-opinion PR review (the main use case), (b) long-running autonomous implementation that would exhaust Claude's context if done in-session. Default to doing everything in Claude. |
+| **`balance`** (default) | Delegate moderately: (a) any multi-step implementation work that would eat >30% of Claude's context, (b) PR reviews that benefit from a second model's perspective, (c) parallelizable tasks that would otherwise serialize. Claude still leads planning, research, and quick edits. |
+| **`max`** | Delegate everything Codex can handle: implementations, reviews, planning, refactors, test writing. Claude stays in orchestrator mode — decomposing work, issuing `spawn` calls, reading summaries, deciding next steps. Use this mode to maximize Codex quota usage and preserve Claude tokens. |
+
+### Mechanism
+
+- **Config:** `codex-team.toml` → `[delegation] level = "balance"` (repo-level, committed) or `~/.codex-team/config.toml` (user-global).
+- **Env override:** `CODEX_TEAM_DELEGATION_LEVEL=max`.
+- **Runtime tool:** MCP tool `get_delegation_policy()` returns current level + full guidance text. Claude calls this on session start (or whenever it's about to decide whether to self-execute vs. spawn a Codex agent).
+- **Resource:** the plugin can also surface `codex-team://delegation-policy` as an MCP resource so Claude reads it like a document — more natural for "read this once, apply throughout session."
+- **Slash command:** `/codex mode <level>` updates the config mid-session.
+
+### What this does *not* do
+
+- No hard enforcement — Claude can always do a task itself regardless of level. This is policy-as-suggestion, not a gate. The gate would require inspecting Claude's in-flight decisions, which we can't do.
+- No quota tracking — we don't count tokens. The level is advisory; users watch quota dashboards elsewhere.
 
 ## Non-goals
 

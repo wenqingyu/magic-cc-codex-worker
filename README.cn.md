@@ -43,17 +43,29 @@
 
 ### 两条斜杠命令完成安装
 
-在任意 Claude Code 会话中依次粘贴:
+Claude Code 的插件分发采用两步模式 —— 类似 `brew tap` + `brew install` 或 `apt-add-repository` + `apt install`。先注册一个**市场**(marketplace,即插件目录),再从中**安装**某个插件。我们这个市场里只有这一个插件,所以名字看起来是重复的 —— 这是正常的。
+
+#### 第 1 步 —— 注册市场目录
+
+告诉 Claude Code:"这个 GitHub 仓库发布了一个插件目录"。它会克隆仓库的 `.claude-plugin/marketplace.json` 并列出该市场里可用的插件。此时还没有安装任何插件。
 
 ```text
 /plugin marketplace add wenqingyu/magic-cc-codex-worker
 ```
 
+#### 第 2 步 —— 从该市场安装插件
+
+从目录中选出某个插件,将其挂载到你当前的 Claude Code 会话。`<插件名>@<市场名>` 的格式在多个市场存在同名插件时用于消除歧义。
+
 ```text
 /plugin install magic-cc-codex-worker@magic-cc-codex-worker
 ```
 
-然后**重启 Claude Code** —— 插件在下一次会话中自动启用。就这么简单:无需克隆、无需构建、无需配置。Claude Code 会拉取仓库、读取 `.claude-plugin/marketplace.json`,并用预构建好的 `dist/`、斜杠命令、子代理一并安装。
+#### 第 3 步 —— 重启 Claude Code
+
+插件在下一次会话中自动启用。重启后运行 `/codex-status` 验证 —— 应返回空的代理列表,并注册 9 个 `codex-team` MCP 工具。
+
+就这么简单:你这边不需要克隆、不需要构建、不需要配置。Claude Code 会拉取仓库、读取 `.claude-plugin/marketplace.json`,并用预构建好的 `dist/`、斜杠命令、子代理一并安装。
 
 ### 前置条件
 

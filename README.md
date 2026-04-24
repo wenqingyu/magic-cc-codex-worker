@@ -43,17 +43,29 @@ Official Codex plugin lets you **use** Codex. This plugin lets you **scale** Cod
 
 ### Install (two slash commands)
 
-Paste these two slash commands into any Claude Code session:
+Claude Code plugin distribution is a two-step pattern — same as `brew tap` + `brew install` or `apt-add-repository` + `apt install`. First you register a **marketplace** (a catalog that lists plugins), then you **install** one of its plugins. Our marketplace happens to contain only this one plugin, so the names look duplicated — that's normal.
+
+#### Step 1 — Register the marketplace catalog
+
+Tells Claude Code "this GitHub repo publishes a plugin catalog." It clones the repo's `.claude-plugin/marketplace.json` and lists the plugins available from it. No plugin is installed yet.
 
 ```text
 /plugin marketplace add wenqingyu/magic-cc-codex-worker
 ```
 
+#### Step 2 — Install the plugin from that marketplace
+
+Picks one plugin out of the catalog and attaches it to your Claude Code session. The `<plugin-name>@<marketplace-name>` format disambiguates when a plugin name exists in multiple catalogs.
+
 ```text
 /plugin install magic-cc-codex-worker@magic-cc-codex-worker
 ```
 
-Then **restart Claude Code** — the plugin activates on the next session. That's it: no clone, no build, no config. Claude Code fetches the repo, reads `.claude-plugin/marketplace.json`, and installs the plugin with its prebuilt `dist/`, commands, and agents.
+#### Step 3 — Restart Claude Code
+
+The plugin activates on the next session. After restart, run `/codex-status` to confirm — should return an empty agent list, and the 9 `codex-team` MCP tools should be registered.
+
+That's it: no clone, no build, no config on your side. Claude Code fetches the repo, reads `.claude-plugin/marketplace.json`, and installs the plugin with its prebuilt `dist/`, commands, and agents.
 
 ### Prerequisites
 

@@ -22,44 +22,30 @@
 
 ## 快速开始
 
-### 一条提示词完成安装(推荐)
+### 两条斜杠命令完成安装
 
-把下面这段话(保持英文原文,以确保 Claude Code 准确执行)粘贴进任意 Claude Code 会话 —— Claude 会自动克隆、构建、注册并验证插件:
+在任意 Claude Code 会话中依次粘贴:
 
 ```text
-Install the `magic-cc-codex-worker` Claude Code plugin from https://github.com/wenqingyu/magic-cc-codex-worker.
-
-Before starting, verify prerequisites — abort and tell me if any fail:
-- `node --version` is v20 or later
-- `git --version` is v2.40 or later
-- `codex --version` succeeds (Codex CLI installed and authenticated)
-
-Steps:
-1. Run: `mkdir -p ~/.claude/plugins-local && git clone https://github.com/wenqingyu/magic-cc-codex-worker ~/.claude/plugins-local/magic-cc-codex-worker` — skip the clone if that directory already exists and is a valid clone of this repo.
-2. Run: `cd ~/.claude/plugins-local/magic-cc-codex-worker && npm install && npm run build`.
-3. In this Claude Code session, invoke the slash command: `/plugin marketplace add ~/.claude/plugins-local/magic-cc-codex-worker`
-4. Invoke the slash command: `/plugin install magic-cc-codex-worker@magic-cc-codex-worker` — the format is `<plugin-name>@<marketplace-name>`; both happen to be the same here.
-5. Tell me to restart Claude Code; the plugin only activates after restart. After I restart, verify by running `/codex-status` — it should return an empty agent list. Confirm that these 9 `codex-team` MCP tools are registered: spawn, status, result, resume, cancel, list, merge, discard, get_delegation_policy.
-
-If any step fails, stop and report exactly which command failed and its error output. Do not attempt workarounds.
+/plugin marketplace add wenqingyu/magic-cc-codex-worker
 ```
 
-### 手动安装
-
-```bash
-# 前置条件: Node 20+、git 2.40+、已认证的 codex CLI
-codex --version          # 任意 0.122.0+ 即可
-git clone https://github.com/wenqingyu/magic-cc-codex-worker ~/.claude/plugins-local/magic-cc-codex-worker
-cd ~/.claude/plugins-local/magic-cc-codex-worker
-npm install && npm run build
-```
-
-然后在 Claude Code 会话里:
-
-```
-/plugin marketplace add ~/.claude/plugins-local/magic-cc-codex-worker
+```text
 /plugin install magic-cc-codex-worker@magic-cc-codex-worker
 ```
+
+然后**重启 Claude Code** —— 插件在下一次会话中自动启用。就这么简单:无需克隆、无需构建、无需配置。Claude Code 会拉取仓库、读取 `.claude-plugin/marketplace.json`,并用预构建好的 `dist/`、斜杠命令、子代理一并安装。
+
+### 前置条件
+
+只需要 `codex` CLI 本身已安装并认证:
+
+```bash
+codex --version          # 任意 0.122.0+ 即可
+codex login              # 如果还未登录
+```
+
+Node / git / npm 仅在你想**开发**插件时才需要 —— 见下方 [开发](#开发) 部分。
 
 ### 首次使用
 

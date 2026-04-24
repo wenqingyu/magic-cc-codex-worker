@@ -1,5 +1,6 @@
 node_modules/
-dist/
+# dist/ is committed so /plugin marketplace add works without a build step.
+# CI verifies dist/ stays in sync with src/ via `npm run build`.
 .codex-team/
 *.log
 .DS_Store

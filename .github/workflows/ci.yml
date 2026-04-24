@@ -28,5 +28,13 @@ jobs:
       - run: npm test
       - run: npm run build
 
+      - name: Verify dist/ is in sync with src/
+        run: |
+          if ! git diff --exit-code dist/; then
+            echo ""
+            echo "::error::dist/ is out of date. Run 'npm run build' locally and commit the result."
+            exit 1
+          fi
+
       - name: Smoke — MCP tools/list
         run: ./scripts/smoke-tools-list.sh

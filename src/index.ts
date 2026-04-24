@@ -19,6 +19,7 @@ import { detectMf } from "./mf/detect.js";
 import { readMfConventions } from "./mf/conventions.js";
 import { LinearClient } from "./mf/linear.js";
 import { WorkersMirror } from "./mf/workers.js";
+import { GhClient } from "./mf/github.js";
 import type { AgentRecord } from "./types.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -122,6 +123,7 @@ async function main() {
   const workersMirror = mf.detected && mf.has_workers_json
     ? new WorkersMirror(repoRoot)
     : undefined;
+  const gh = new GhClient({ cwd: repoRoot });
   const orch = new Orchestrator({
     registry,
     worktrees,
@@ -133,6 +135,7 @@ async function main() {
     mf,
     linear,
     workersMirror,
+    gh,
     mfConventions,
   });
 

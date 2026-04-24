@@ -13,6 +13,7 @@ import { renderTemplate } from "./roles/templater.js";
 import type { MfContext } from "./mf/detect.js";
 import type { LinearClient, LinearIssue } from "./mf/linear.js";
 import type { WorkersMirror } from "./mf/workers.js";
+import type { GhClient, PrInfo } from "./mf/github.js";
 
 export interface SpawnOverrides {
   model?: string;
@@ -97,6 +98,7 @@ export interface OrchestratorOptions {
   mf?: MfContext;
   linear?: LinearClient;
   workersMirror?: WorkersMirror;
+  gh?: GhClient;
   /** Magic Flow conventions text to inject into developer_instructions. */
   mfConventions?: string;
 }
@@ -155,9 +157,24 @@ export class Orchestrator {
       linearIssue = await this.opts.linear.getIssue(input.issue_id);
     }
 
+    // Optional PR materialization (reviewer role with pr_number)
+    let prInfo: PrInfo | null = null;
+    if (input.role === "reviewer" && input.pr_number && this.opts.gh) {
+      prInfo = await this.opts.gh.getPr(input.pr_number);
+    }
+
     let cwd = this.opts.repoRoot;
     let worktreeInfo: AgentRecord["worktree"] = null;
-    if (preset.worktree) {
+
+    if (prInfo) {
+      // PR worktree mode: detached checkout at PR head SHA for read-only review.
+      worktreeInfo = await this.opts.worktrees.createDetached({
+        agent_id: rec.agent_id,
+        ref: prInfo.headRefOid,
+      });
+      cwd = worktreeInfo.path;
+      await this.opts.registry.update(rec.agent_id, { cwd, worktree: worktreeInfo });
+    } else if (preset.worktree) {
       const branch = this.makeBranchName(rec.agent_id, input.issue_id, linearIssue);
       worktreeInfo = await this.opts.worktrees.create({
         agent_id: rec.agent_id,
@@ -175,6 +192,7 @@ export class Orchestrator {
       cwd,
       worktreeInfo,
       linearIssue,
+      prInfo,
     );
 
     const running = await this.opts.registry.update(rec.agent_id, {
@@ -367,7 +385,11 @@ export class Orchestrator {
     cwd: string,
     worktree: AgentRecord["worktree"],
     linearIssue: LinearIssue | null,
+    prInfo: PrInfo | null,
   ): string {
+    const prContext = prInfo
+      ? `Reviewing PR #${prInfo.number}: "${prInfo.title}". Head SHA ${prInfo.headRefOid} checked out in detached worktree; base ref is ${prInfo.baseRefName}. PR URL: ${prInfo.url}`
+      : "";
     const ctx: Record<string, string | number | undefined> = {
       agent_id,
       role: input.role,
@@ -381,7 +403,10 @@ export class Orchestrator {
       issue_title: linearIssue?.title ?? "",
       issue_description: linearIssue?.description ?? "",
       issue_url: linearIssue?.url ?? "",
-      pr_context: "",
+      pr_title: prInfo?.title ?? "",
+      pr_head_ref: prInfo?.headRefName ?? "",
+      pr_diff_url: prInfo ? `${prInfo.url}/files` : "",
+      pr_context: prContext,
     };
     let instructions = renderTemplate(preset.developer_instructions, ctx);
     if (input.overrides?.developer_instructions_replace) {

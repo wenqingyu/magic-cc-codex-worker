@@ -10,6 +10,12 @@ export interface CreateWorktreeInput {
   parent_dir?: string;
 }
 
+export interface CreateDetachedWorktreeInput {
+  agent_id: string;
+  ref: string; // SHA or symbolic ref to check out in detached mode
+  parent_dir?: string;
+}
+
 export class Worktrees {
   constructor(private readonly repoRoot: string) {}
 
@@ -34,6 +40,26 @@ export class Worktrees {
       path,
       branch: input.branch,
       base_ref: input.base_ref,
+      created_at: new Date().toISOString(),
+    };
+  }
+
+  async createDetached(input: CreateDetachedWorktreeInput): Promise<WorktreeInfo> {
+    const parent = input.parent_dir ?? this.defaultParent();
+    const path = resolve(parent, input.agent_id);
+    await execa("git", [
+      "-C",
+      this.repoRoot,
+      "worktree",
+      "add",
+      "--detach",
+      path,
+      input.ref,
+    ]);
+    return {
+      path,
+      branch: `(detached)`,
+      base_ref: input.ref,
       created_at: new Date().toISOString(),
     };
   }

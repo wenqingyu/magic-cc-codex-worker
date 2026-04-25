@@ -26,13 +26,13 @@ ledger is the trace.
 ### 🔵 rohitg00/awesome-claude-code-toolkit #339
 - **URL:** https://github.com/rohitg00/awesome-claude-code-toolkit/pull/339
 - **Submitted:** 2026-04-24 12:41 UTC
-- **Last activity:** 2026-04-24 13:03 UTC
-- **Status:** CodeRabbit reviewed, partially addressed
+- **Last activity:** 2026-04-25 (CodeRabbit follow-up addressed)
+- **Status:** all CodeRabbit notes resolved, awaiting maintainer
 - **History:**
   - 2026-04-24 12:42 — CodeRabbit auto-review: suggested adding license note + bumping plugin counter
-  - 2026-04-24 13:02 — addressed in commit `3118e83`: license added to entry, header bumped 176+ → 177+
-  - 2026-04-24 13:03 — CodeRabbit follow-up: counter still says `176+` at **line 53 (TOC)** and **line 74 (Plugins intro)**; only line 3 was bumped
-- **Action open:** decide whether to also bump line 53 + 74. Maintainer not yet weighed in. CodeRabbit is a bot — if maintainer is fine with partial bump, no action needed. Risk of further bot churn if we leave it.
+  - 2026-04-24 13:02 — addressed in `3118e83`: license added to entry, header bumped 176+ → 177+
+  - 2026-04-24 13:03 — CodeRabbit follow-up: counter still says `176+` at line 53 (TOC) and line 74 (Plugins intro); only line 3 was bumped
+  - 2026-04-25 — addressed in `ccb8c1e`: synced both remaining counters; courtesy comment posted
 
 ### 🟡 ccplugins/awesome-claude-code-plugins #201
 - **URL:** https://github.com/ccplugins/awesome-claude-code-plugins/pull/201

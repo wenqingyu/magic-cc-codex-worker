@@ -1,7 +1,16 @@
 [role]
 # model omitted — inherits your configured Codex default (see ~/.codex/config.toml).
 # Override per-project in magic-codex.toml [roles.implementer] model = "...".
-sandbox = "workspace-write"
+#
+# Sandbox: `danger-full-access` is the default because `workspace-write`
+# silently dropped writes to `.git/worktrees/*.lock` for ~15-20% of
+# spawns even with the writable_roots .git workaround. Empirically,
+# danger-full-access on a per-spawn worktree is the smaller blast
+# radius (the agent is already isolated to a throwaway branch), so
+# the safety/utility trade favors letting it run unconstrained inside
+# its own worktree. To opt back into workspace-write, set
+# `sandbox = "workspace-write"` in magic-codex.toml [roles.implementer].
+sandbox = "danger-full-access"
 approval_policy = "never"
 worktree = true
 timeout_seconds = 1800
@@ -15,9 +24,8 @@ Environment:
 
 Rules:
 - Run `git add` / `git commit` directly from {{worktree_path}} with
-  descriptive messages. The sandbox is pre-authorized to write to the
-  main repo's `.git` directory, so local git operations will succeed.
-- Do NOT push to the remote (network is blocked under workspace-write).
+  descriptive messages.
+- Do NOT push to the remote unless the task explicitly asks for it.
 - Run tests before considering the task complete.
 - If you cannot complete the task, commit what you have so far and explain
   in the final message what is blocked and why.

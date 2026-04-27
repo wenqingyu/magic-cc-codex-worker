@@ -2,6 +2,30 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.0] — 2026-04-27
+
+This release closes a batch of operational potholes surfaced by ~50 real spawns across multi-repo workspaces. Most of the changes are defaults that empirical evidence has already validated; a few are bug fixes for things the test suite never caught because they only manifest across process restarts or in repos with non-`main` defaults.
+
+### Fixed
+- **`discard` failed in multi-repo workspaces.** It ran `git -C <orchestrator-default-repo>` even when the agent had been spawned with a per-call `repo_root` override. In HQ-style workspaces where the orchestrator's launch cwd isn't itself a git repo, this exited with `fatal: not a git repository` and the only workaround was a manual `git -C <repo> worktree remove --force`. Fix: persist `repo_root` on the agent record at spawn time and recreate a per-record `Worktrees` instance for `discard`, `merge`, and `cancel --force`. Regression test exercises the multi-repo path.
+- **Stale "running" zombies after process crashes.** When the MCP server died mid-spawn, agents marked `running` in `state.json` lingered there indefinitely (some lasted days in the wild). The orchestrator's in-memory `tasks`/`active` maps don't survive a restart, so any such record is by definition orphaned. Fix: `Registry.load()` now sweeps `running`/`queued` records into `failed` with `error.kind = "zombie"`, eagerly persisted. Two regression tests cover the sweep + the no-op for terminal records.
+- **Stale baseline against `origin/<base_ref>`.** Long-lived MCP servers branched off whatever the local ref pointed at when the worktree was created — sometimes hours/days behind origin. Fix: `Worktrees.create` now does a best-effort `git fetch origin <base_ref> --quiet` before `worktree add`. Failure (no remote, offline) is silent and falls back to the local ref.
+- **`base_ref` defaulted to `main` even in `master`-default repos.** ~40% of real-world repos still use `master` as their default branch; spawns into them died with `fatal: invalid reference: main`. Fix: when `base_ref` is omitted, probe `origin/HEAD` → local `main` → `master` → `develop` and pick the first that exists. Regression test creates a `master`-init repo and confirms the auto-detected base.
+
+### Added
+- **Implementer default sandbox is now `danger-full-access`.** `workspace-write` silently dropped `.git/worktrees/*.lock` writes for ~15-20% of spawns even with the 0.3.7 canonicalized `writable_roots` workaround. Empirically, danger-full-access on a per-spawn worktree is the smaller blast radius — the agent is already isolated to a throwaway branch and can't touch the main worktree. Override via `[roles.implementer] sandbox = "workspace-write"` in `magic-codex.toml`. The 0.3.7 writable_roots safety net is preserved for that opt-in path.
+- **Rust no-fmt guardrail.** When the agent's worktree contains a `Cargo.toml`, the orchestrator now prepends a "DO NOT run `cargo fmt`" rule to `developer_instructions`. Codex agents reflexively run `cargo fmt` (often as a side effect of `cargo build` checks) and rewrite ~20-30 unrelated files, producing massive churn diffs that mask the actual change. Empirical: zero churn on Rust spawns since this landed.
+- **`error.retry_at` and `error.retry_after_seconds` for rate-limited failures.** When codex prints "try again at HH:MM" or "retry after N seconds" on a rate-limit error, we now parse the time (interpreted as host-local for clock-style hints, with a tomorrow-rollover when the parsed time is already past) and resolve to absolute UTC. Surfaced on `status` and `result` so callers can sleep precisely instead of polling. Five new tests cover the seconds form, am/pm, rollover, and the no-hint path.
+- **`AgentRecord.delta` (branch / commit_sha / diff_stat / commits_ahead).** After a successful worktree-bearing run, the orchestrator captures the structured commit output via `git rev-parse HEAD`, `git diff --stat <base_ref>..HEAD`, and `git rev-list --count`. Surfaced as separate fields on both `status` and `result` so callers don't need to parse the (possibly truncated) prose `last_output`. Best-effort: failures here never fail the agent.
+- **`AgentRecord.repo_root`.** Persisted at spawn time so downstream ops (`merge`, `discard`, `cancel --force`) can target the correct repo in multi-repo workspaces. Absent on records created before 0.4.0 — those fall back to the orchestrator's default `repoRoot`.
+- **`.magic-codex/` auto-added to repo `.gitignore`.** First worktree-bearing spawn now writes the entry idempotently. Without this, agents' first `git status` showed the worktree directory as untracked, and a careless `git add -A` could pull worktree submodules into the parent commit.
+
+### Internal
+- `classifyError(message, stderrTail)` is preserved for legacy callers; `classifyErrorDetailed(message, stderrTail, now?)` is the new entry point that returns `{ kind, retry_at?, retry_after_seconds? }`. The orchestrator failure-handler uses the detailed form.
+- `AgentErrorKind` gains `"zombie"` for the registry sweep path.
+- `Worktrees` gains `ensureGitignore()` and `detectDefaultBranch()` helpers (both best-effort, never throw).
+- 15 new tests across `classify-error`, `registry`, and `orchestrator` suites; total now 103 (was 88) and all passing.
+
 ## [0.3.9] — 2026-04-25
 
 ### Added

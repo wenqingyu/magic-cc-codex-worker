@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyError } from "../../src/classify-error.js";
+import { classifyError, classifyErrorDetailed } from "../../src/classify-error.js";
 
 describe("classifyError", () => {
   describe("rate_limited", () => {
@@ -81,5 +81,70 @@ describe("classifyError", () => {
     it("does not false-positive on the word 'limit' alone", () => {
       expect(classifyError("hit the array limit", "")).toBe(null);
     });
+  });
+});
+
+describe("classifyErrorDetailed — retry hint extraction", () => {
+  // Fixed clock so the "tomorrow rollover" test is deterministic.
+  const now = new Date("2026-04-27T15:00:00.000Z"); // 15:00 UTC
+
+  it("parses 'try again in 600 seconds'", () => {
+    const c = classifyErrorDetailed(
+      "rate limit exceeded, try again in 600 seconds",
+      "",
+      now,
+    );
+    expect(c.kind).toBe("rate_limited");
+    expect(c.retry_after_seconds).toBe(600);
+    expect(c.retry_at).toBe("2026-04-27T15:10:00.000Z");
+  });
+
+  it("parses 'try again at HH:MM' as local time, future today", () => {
+    // System TZ-dependent: target hour interpreted as host local.
+    // We don't assert exact UTC; we assert that retry_after_seconds
+    // is positive and < 24h.
+    const c = classifyErrorDetailed(
+      "you've hit your usage limit. try again at 23:30.",
+      "",
+      now,
+    );
+    expect(c.kind).toBe("rate_limited");
+    expect(c.retry_after_seconds).toBeGreaterThan(0);
+    expect(c.retry_after_seconds).toBeLessThanOrEqual(24 * 3600);
+    expect(c.retry_at).toMatch(/^2026-04-(27|28)T/);
+  });
+
+  it("parses 'available again at 9:05 am' (12-hour with am/pm)", () => {
+    const c = classifyErrorDetailed(
+      "rate-limited; available again at 9:05 am",
+      "",
+      now,
+    );
+    expect(c.kind).toBe("rate_limited");
+    expect(c.retry_after_seconds).toBeGreaterThan(0);
+  });
+
+  it("rolls clock-time hint to tomorrow when target is in the past", () => {
+    // Pick a time that is definitely already past in any TZ.
+    const c = classifyErrorDetailed(
+      "rate limit. try again at 0:01",
+      "",
+      new Date("2026-04-27T23:59:00.000Z"),
+    );
+    expect(c.kind).toBe("rate_limited");
+    expect(c.retry_after_seconds).toBeGreaterThan(0);
+  });
+
+  it("returns rate_limited without retry hint when no time text present", () => {
+    const c = classifyErrorDetailed("HTTP 429 too many requests", "", now);
+    expect(c.kind).toBe("rate_limited");
+    expect(c.retry_at).toBeUndefined();
+    expect(c.retry_after_seconds).toBeUndefined();
+  });
+
+  it("returns null kind unaffected", () => {
+    const c = classifyErrorDetailed("unexpected EOF", "", now);
+    expect(c.kind).toBeNull();
+    expect(c.retry_at).toBeUndefined();
   });
 });

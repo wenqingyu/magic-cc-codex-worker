@@ -101,3 +101,70 @@ describe("Registry.list and reload", () => {
     expect(restored.map((r) => r.agent_id).sort()).toEqual([a.agent_id, b.agent_id].sort());
   });
 });
+
+describe("Registry zombie sweep on load", () => {
+  it("marks running/queued agents from a prior process as failed with kind=zombie", async () => {
+    // Simulate a crashed process by creating + transitioning to running,
+    // then opening a *fresh* Registry over the same state dir.
+    const orig = await registry.create({
+      role: "implementer",
+      cwd: "/x",
+      model: "m",
+      sandbox: "workspace-write",
+      approval_policy: "never",
+      last_prompt: "long work",
+    });
+    await registry.update(orig.agent_id, {
+      status: "running",
+      started_at: new Date().toISOString(),
+      pid: 4242,
+    });
+
+    // A new server process: any "running" record in state.json must be
+    // a zombie because no in-process task is tracking it.
+    const fresh = new Registry(dir);
+    const swept = await fresh.get(orig.agent_id);
+    expect(swept!.status).toBe("failed");
+    expect(swept!.error?.kind).toBe("zombie");
+    expect(swept!.pid).toBeNull();
+    expect(swept!.ended_at).toBeTruthy();
+  });
+
+  it("leaves terminal agents (completed/failed/cancelled) untouched", async () => {
+    const rec = await registry.create({
+      role: "reviewer",
+      cwd: "/x",
+      model: "m",
+      sandbox: "read-only",
+      approval_policy: "never",
+      last_prompt: "p",
+    });
+    await registry.update(rec.agent_id, {
+      status: "completed",
+      ended_at: new Date().toISOString(),
+      last_output: "ok",
+    });
+    const fresh = new Registry(dir);
+    const reloaded = await fresh.get(rec.agent_id);
+    expect(reloaded!.status).toBe("completed");
+    expect(reloaded!.error).toBeNull();
+  });
+});
+
+describe("Registry.create — repo_root", () => {
+  it("persists repo_root on the record when provided", async () => {
+    const rec = await registry.create({
+      role: "implementer",
+      cwd: "/path/to/some/worktree",
+      model: "m",
+      sandbox: "danger-full-access",
+      approval_policy: "never",
+      last_prompt: "p",
+      repo_root: "/path/to/some",
+    });
+    expect(rec.repo_root).toBe("/path/to/some");
+    const fresh = new Registry(dir);
+    const reloaded = await fresh.get(rec.agent_id);
+    expect(reloaded!.repo_root).toBe("/path/to/some");
+  });
+});

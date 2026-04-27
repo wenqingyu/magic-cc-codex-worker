@@ -198,6 +198,11 @@ describe("Orchestrator.spawn", () => {
     // main repo's `.git` (objects/refs/per-worktree metadata), so git
     // inside a linked worktree silently fails. Expose `.git` as an
     // extra writable root so agents can commit from their own worktree.
+    //
+    // 0.4.0: implementer default is now danger-full-access (which
+    // doesn't need writable_roots at all). This test explicitly
+    // overrides back to workspace-write to exercise the safety net
+    // for users who opt back via magic-codex.toml.
     const call = vi.fn().mockResolvedValue({ threadId: "t", content: "", raw: {} });
     const orch = new Orchestrator({
       registry,
@@ -206,7 +211,11 @@ describe("Orchestrator.spawn", () => {
       rolesDir,
       repoRoot: repo,
     });
-    const res = await orch.spawn({ role: "implementer", prompt: "edit and commit" });
+    const res = await orch.spawn({
+      role: "implementer",
+      prompt: "edit and commit",
+      overrides: { sandbox: "workspace-write" },
+    });
     await orch.waitForAgent(res.agent_id);
     const passed = call.mock.calls[0][0];
     // 0.3.7: path is realpath-canonicalized so macOS seatbelt matches
@@ -613,6 +622,309 @@ describe("Orchestrator.merge and discard", () => {
     const spawn = await orch.spawn({ role: "implementer", prompt: "w" });
     await expect(orch.discard({ agent_id: spawn.agent_id })).rejects.toThrow(/cancel first/);
     await orch.cancel({ agent_id: spawn.agent_id });
+  });
+});
+
+describe("Orchestrator multi-repo discard / merge / cancel --force", () => {
+  // Regression for the bug where discard ran git -C <orchestrator's
+  // default repo> instead of -C <per-spawn repo_root>, failing with
+  // "fatal: not a git repository" in multi-repo workspaces.
+  let stateDir: string;
+  let repoA: string;
+  let repoB: string;
+  let registry: Registry;
+  let worktreesA: Worktrees;
+
+  beforeEach(async () => {
+    stateDir = mkdtempSync(join(tmpdir(), "orch-multi-state-"));
+    repoA = mkdtempSync(join(tmpdir(), "orch-multi-A-"));
+    repoB = mkdtempSync(join(tmpdir(), "orch-multi-B-"));
+    for (const r of [repoA, repoB]) {
+      await execa("git", ["-C", r, "init", "-q", "-b", "main"]);
+      await execa("git", ["-C", r, "config", "user.email", "t@t"]);
+      await execa("git", ["-C", r, "config", "user.name", "t"]);
+      await execa("git", ["-C", r, "commit", "--allow-empty", "-m", "init"]);
+    }
+    registry = new Registry(stateDir);
+    worktreesA = new Worktrees(repoA);
+  });
+
+  afterEach(() => {
+    rmSync(stateDir, { recursive: true, force: true });
+    rmSync(repoA, { recursive: true, force: true });
+    rmSync(repoB, { recursive: true, force: true });
+  });
+
+  function okFactory() {
+    return () =>
+      ({
+        start: vi.fn().mockResolvedValue(undefined),
+        call: vi.fn().mockResolvedValue({ threadId: "t-1", content: "done", raw: {} }),
+        stop: vi.fn().mockResolvedValue(undefined),
+        get pid() {
+          return 1;
+        },
+      }) as unknown as CodexChild;
+  }
+
+  it("discards a worktree against the per-spawn repo_root, not the default", async () => {
+    const orch = new Orchestrator({
+      registry,
+      worktrees: worktreesA, // default points at repoA
+      codexFactory: okFactory(),
+      rolesDir,
+      repoRoot: repoA,
+    });
+    const res = await orch.spawn({
+      role: "implementer",
+      prompt: "work",
+      repo_root: repoB, // spawn against repoB
+    });
+    await orch.waitForAgent(res.agent_id);
+    // Discard must succeed even though orchestrator's default repo is
+    // repoA — pre-fix it would error with "fatal: not a git repository"
+    // when repoA happened to not be a git repo (the multi-repo HQ
+    // pattern). Here both are git repos, but the worktree path lives
+    // under repoB so removing via repoA's worktrees instance fails.
+    const result = await orch.discard({ agent_id: res.agent_id });
+    expect(result.worktree_removed).toBe(true);
+    expect(result.branch_deleted).toBe(true);
+    const rec = await registry.get(res.agent_id);
+    expect(rec!.worktree).toBeNull();
+  });
+});
+
+describe("Orchestrator default-branch auto-detect", () => {
+  let stateDir: string;
+  let repo: string;
+  let registry: Registry;
+  let worktrees: Worktrees;
+
+  beforeEach(async () => {
+    stateDir = mkdtempSync(join(tmpdir(), "orch-defbr-state-"));
+    repo = mkdtempSync(join(tmpdir(), "orch-defbr-repo-"));
+    // Init with `master` to verify we don't blindly fall back to `main`.
+    await execa("git", ["-C", repo, "init", "-q", "-b", "master"]);
+    await execa("git", ["-C", repo, "config", "user.email", "t@t"]);
+    await execa("git", ["-C", repo, "config", "user.name", "t"]);
+    await execa("git", ["-C", repo, "commit", "--allow-empty", "-m", "init"]);
+    registry = new Registry(stateDir);
+    worktrees = new Worktrees(repo);
+  });
+
+  afterEach(() => {
+    rmSync(stateDir, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  it("detects `master` when base_ref omitted and `main` does not exist", async () => {
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: () =>
+        ({
+          start: vi.fn().mockResolvedValue(undefined),
+          call: vi.fn().mockResolvedValue({ threadId: "t", content: "", raw: {} }),
+          stop: vi.fn().mockResolvedValue(undefined),
+          get pid() {
+            return 1;
+          },
+        }) as unknown as CodexChild,
+      rolesDir,
+      repoRoot: repo,
+    });
+    const res = await orch.spawn({ role: "implementer", prompt: "p" });
+    await orch.waitForAgent(res.agent_id);
+    const rec = await registry.get(res.agent_id);
+    expect(rec!.worktree?.base_ref).toBe("master");
+  });
+});
+
+describe("Orchestrator Rust no-fmt guardrail", () => {
+  let stateDir: string;
+  let repo: string;
+  let registry: Registry;
+  let worktrees: Worktrees;
+
+  beforeEach(async () => {
+    stateDir = mkdtempSync(join(tmpdir(), "orch-rust-state-"));
+    repo = mkdtempSync(join(tmpdir(), "orch-rust-repo-"));
+    await execa("git", ["-C", repo, "init", "-q", "-b", "main"]);
+    await execa("git", ["-C", repo, "config", "user.email", "t@t"]);
+    await execa("git", ["-C", repo, "config", "user.name", "t"]);
+    // Plant a Cargo.toml so the agent's worktree (forked off main) sees
+    // it and the guardrail kicks in.
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(join(repo, "Cargo.toml"), "[package]\nname = \"x\"\n");
+    await execa("git", ["-C", repo, "add", "Cargo.toml"]);
+    await execa("git", ["-C", repo, "commit", "-m", "init"]);
+    registry = new Registry(stateDir);
+    worktrees = new Worktrees(repo);
+  });
+
+  afterEach(() => {
+    rmSync(stateDir, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  it("injects a 'do not run cargo fmt' rule into developer_instructions when Cargo.toml is present", async () => {
+    const call = vi.fn().mockResolvedValue({ threadId: "t", content: "", raw: {} });
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: () =>
+        ({
+          start: vi.fn().mockResolvedValue(undefined),
+          call,
+          stop: vi.fn().mockResolvedValue(undefined),
+          get pid() {
+            return 1;
+          },
+        }) as unknown as CodexChild,
+      rolesDir,
+      repoRoot: repo,
+    });
+    const res = await orch.spawn({ role: "implementer", prompt: "p" });
+    await orch.waitForAgent(res.agent_id);
+    const passed = call.mock.calls[0][0];
+    expect(passed.developer_instructions).toMatch(/cargo fmt/i);
+    expect(passed.developer_instructions).toMatch(/DO NOT/);
+  });
+
+  it("does NOT inject the guardrail in repos without Cargo.toml", async () => {
+    // Use a different repo without Cargo.toml.
+    const plainRepo = mkdtempSync(join(tmpdir(), "orch-plain-"));
+    await execa("git", ["-C", plainRepo, "init", "-q", "-b", "main"]);
+    await execa("git", ["-C", plainRepo, "config", "user.email", "t@t"]);
+    await execa("git", ["-C", plainRepo, "config", "user.name", "t"]);
+    await execa("git", ["-C", plainRepo, "commit", "--allow-empty", "-m", "init"]);
+    try {
+      const call = vi.fn().mockResolvedValue({ threadId: "t", content: "", raw: {} });
+      const orch = new Orchestrator({
+        registry,
+        worktrees: new Worktrees(plainRepo),
+        codexFactory: () =>
+          ({
+            start: vi.fn().mockResolvedValue(undefined),
+            call,
+            stop: vi.fn().mockResolvedValue(undefined),
+            get pid() {
+              return 1;
+            },
+          }) as unknown as CodexChild,
+        rolesDir,
+        repoRoot: plainRepo,
+      });
+      const res = await orch.spawn({ role: "implementer", prompt: "p" });
+      await orch.waitForAgent(res.agent_id);
+      const passed = call.mock.calls[0][0];
+      expect(passed.developer_instructions).not.toMatch(/cargo fmt/i);
+    } finally {
+      rmSync(plainRepo, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("Orchestrator .gitignore management", () => {
+  let stateDir: string;
+  let repo: string;
+  let registry: Registry;
+  let worktrees: Worktrees;
+
+  beforeEach(async () => {
+    stateDir = mkdtempSync(join(tmpdir(), "orch-gi-state-"));
+    repo = mkdtempSync(join(tmpdir(), "orch-gi-repo-"));
+    await execa("git", ["-C", repo, "init", "-q", "-b", "main"]);
+    await execa("git", ["-C", repo, "config", "user.email", "t@t"]);
+    await execa("git", ["-C", repo, "config", "user.name", "t"]);
+    await execa("git", ["-C", repo, "commit", "--allow-empty", "-m", "init"]);
+    registry = new Registry(stateDir);
+    worktrees = new Worktrees(repo);
+  });
+
+  afterEach(() => {
+    rmSync(stateDir, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  it("adds .magic-codex/ to repo's .gitignore on first worktree-bearing spawn", async () => {
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: () =>
+        ({
+          start: vi.fn().mockResolvedValue(undefined),
+          call: vi.fn().mockResolvedValue({ threadId: "t", content: "", raw: {} }),
+          stop: vi.fn().mockResolvedValue(undefined),
+          get pid() {
+            return 1;
+          },
+        }) as unknown as CodexChild,
+      rolesDir,
+      repoRoot: repo,
+    });
+    const res = await orch.spawn({ role: "implementer", prompt: "p" });
+    await orch.waitForAgent(res.agent_id);
+    const { readFileSync, existsSync } = await import("node:fs");
+    expect(existsSync(join(repo, ".gitignore"))).toBe(true);
+    const content = readFileSync(join(repo, ".gitignore"), "utf8");
+    expect(content).toMatch(/\.magic-codex\/?/);
+  });
+});
+
+describe("Orchestrator delta capture (post-completion structured output)", () => {
+  let stateDir: string;
+  let repo: string;
+  let registry: Registry;
+  let worktrees: Worktrees;
+
+  beforeEach(async () => {
+    stateDir = mkdtempSync(join(tmpdir(), "orch-delta-state-"));
+    repo = mkdtempSync(join(tmpdir(), "orch-delta-repo-"));
+    await execa("git", ["-C", repo, "init", "-q", "-b", "main"]);
+    await execa("git", ["-C", repo, "config", "user.email", "t@t"]);
+    await execa("git", ["-C", repo, "config", "user.name", "t"]);
+    await execa("git", ["-C", repo, "commit", "--allow-empty", "-m", "init"]);
+    registry = new Registry(stateDir);
+    worktrees = new Worktrees(repo);
+  });
+
+  afterEach(() => {
+    rmSync(stateDir, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  it("captures branch + commit_sha + diff_stat after a successful implementer run", async () => {
+    const factory = () =>
+      ({
+        start: vi.fn().mockResolvedValue(undefined),
+        call: vi.fn().mockImplementation(async (input: { cwd: string }) => {
+          const { writeFileSync } = await import("node:fs");
+          writeFileSync(join(input.cwd, "OUT.md"), "agent did stuff\n");
+          await execa("git", ["-C", input.cwd, "add", "OUT.md"]);
+          await execa("git", ["-C", input.cwd, "commit", "-m", "agent commit"]);
+          return { threadId: "t", content: "done", raw: {} };
+        }),
+        stop: vi.fn().mockResolvedValue(undefined),
+        get pid() {
+          return 1;
+        },
+      }) as unknown as CodexChild;
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: factory,
+      rolesDir,
+      repoRoot: repo,
+    });
+    const res = await orch.spawn({ role: "implementer", prompt: "p" });
+    await orch.waitForAgent(res.agent_id);
+    const rec = await registry.get(res.agent_id);
+    expect(rec!.delta).toBeTruthy();
+    expect(rec!.delta!.commit_sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(rec!.delta!.commits_ahead).toBeGreaterThanOrEqual(1);
+    expect(rec!.delta!.diff_stat).toMatch(/OUT\.md/);
+    expect(rec!.delta!.branch).toBeTruthy();
   });
 });
 

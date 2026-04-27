@@ -27709,7 +27709,7 @@ var CodexChild = class {
       stderr: "pipe"
     });
     this.client = new Client(
-      { name: "magic-codex", version: "0.4.0" },
+      { name: "magic-codex", version: "0.4.2" },
       { capabilities: {} }
     );
     await this.client.connect(this.transport);
@@ -28160,7 +28160,7 @@ async function main() {
     mfConventions
   });
   const server = new Server(
-    { name: "magic-codex", version: "0.4.1" },
+    { name: "magic-codex", version: "0.4.2" },
     { capabilities: { tools: {} } }
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

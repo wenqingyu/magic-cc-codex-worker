@@ -26361,6 +26361,11 @@ var Orchestrator = class {
         ...input.overrides?.timeout_seconds ? { timeout_seconds: input.overrides.timeout_seconds } : {}
       }
     });
+    if (input.role === "implementer" && preset.sandbox === "workspace-write" && preset.worktree) {
+      console.error(
+        `[magic-codex] WARNING: implementer effective sandbox is "workspace-write". This is known to silently drop .git/worktrees/<id>/index.lock writes (commits don't land but status reports completed). 0.4.0+ defaults to "danger-full-access" \u2014 if you're seeing this, either your magic-codex.toml pins workspace-write, or this spawn passes overrides.sandbox = "workspace-write". Recommendation: remove the override and let the new default apply.`
+      );
+    }
     const model = preset.model;
     const repoRoot = input.repo_root ?? this.opts.repoRoot;
     const worktrees = input.repo_root ? new Worktrees(input.repo_root) : this.opts.worktrees;
@@ -26674,15 +26679,40 @@ var Orchestrator = class {
         });
         const result = await withTimeout(child.call(callInput, timeoutMs), timeoutMs);
         const delta = await captureDelta(callInput.cwd, baseRef).catch(() => null);
-        const completed = await this.opts.registry.update(agent_id, {
-          status: "completed",
-          thread_id: result.threadId || null,
-          last_output: result.content,
-          ended_at: (/* @__PURE__ */ new Date()).toISOString(),
-          pid: null,
-          ...delta ? { delta } : {}
-        });
-        await this.mirrorWorker(completed);
+        const stderrClass = classifyErrorDetailed("", stderrTail);
+        const proseDeniedSignal = /\boperation not permitted\b[^\n]{0,160}\.git\b/i.test(result.content ?? "") || /\b\.git\/worktrees\/[^\n]{0,120}\.lock\b/i.test(result.content ?? "");
+        const noWorkLanded = preset.worktree && delta?.commits_ahead === 0 && proseDeniedSignal;
+        const shouldDemote = stderrClass.kind !== null || noWorkLanded;
+        if (shouldDemote) {
+          const kind = stderrClass.kind ?? "sandbox_denied";
+          const stderr_tail = stderrTail.slice(-2048) || void 0;
+          const updated = await this.opts.registry.update(agent_id, {
+            status: "failed",
+            thread_id: result.threadId || null,
+            last_output: result.content,
+            ended_at: (/* @__PURE__ */ new Date()).toISOString(),
+            pid: null,
+            ...delta ? { delta } : {},
+            error: {
+              message: kind === "rate_limited" ? "codex returned a result but stderr indicates a rate-limit hit during the run" : "codex returned a result but the agent's actions were blocked (sandbox denial detected post-completion)",
+              kind,
+              ...stderr_tail ? { stderr_tail } : {},
+              ...stderrClass.retry_at ? { retry_at: stderrClass.retry_at } : {},
+              ...stderrClass.retry_after_seconds !== void 0 ? { retry_after_seconds: stderrClass.retry_after_seconds } : {}
+            }
+          });
+          await this.mirrorWorker(updated);
+        } else {
+          const completed = await this.opts.registry.update(agent_id, {
+            status: "completed",
+            thread_id: result.threadId || null,
+            last_output: result.content,
+            ended_at: (/* @__PURE__ */ new Date()).toISOString(),
+            pid: null,
+            ...delta ? { delta } : {}
+          });
+          await this.mirrorWorker(completed);
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         const finalStatus = ctx.cancelRequested ? "cancelled" : "failed";
@@ -28130,7 +28160,7 @@ async function main() {
     mfConventions
   });
   const server = new Server(
-    { name: "magic-codex", version: "0.4.0" },
+    { name: "magic-codex", version: "0.4.1" },
     { capabilities: { tools: {} } }
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

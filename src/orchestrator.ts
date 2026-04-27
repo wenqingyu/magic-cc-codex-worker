@@ -154,6 +154,30 @@ export class Orchestrator {
       },
     });
 
+    // Loud warning when the effective implementer sandbox resolves to
+    // workspace-write — empirically this still drops .git/worktrees/
+    // <id>/index.lock writes on macOS for ~33-67% of spawns even with
+    // the canonicalized writable_roots workaround. This commonly
+    // surprises users who upgraded to 0.4.0+ but have a project
+    // magic-codex.toml pinning sandbox = "workspace-write" (or are
+    // loading a cached older version of the plugin). Surfaced once
+    // per spawn so it's hard to miss in Claude Code's MCP logs.
+    if (
+      input.role === "implementer" &&
+      preset.sandbox === "workspace-write" &&
+      preset.worktree
+    ) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[magic-codex] WARNING: implementer effective sandbox is "workspace-write". ` +
+          `This is known to silently drop .git/worktrees/<id>/index.lock writes ` +
+          `(commits don't land but status reports completed). 0.4.0+ defaults to ` +
+          `"danger-full-access" — if you're seeing this, either your magic-codex.toml ` +
+          `pins workspace-write, or this spawn passes overrides.sandbox = "workspace-write". ` +
+          `Recommendation: remove the override and let the new default apply.`,
+      );
+    }
+
     // preset.model may be undefined — we pass it through and let codex mcp-server
     // use its own configured default. Override via magic-codex.toml or overrides.model.
     const model = preset.model;
@@ -585,15 +609,71 @@ export class Orchestrator {
         // last_output_preview truncates the prose. Best-effort —
         // failures here don't fail the agent.
         const delta = await captureDelta(callInput.cwd, baseRef).catch(() => null);
-        const completed = await this.opts.registry.update(agent_id, {
-          status: "completed",
-          thread_id: result.threadId || null,
-          last_output: result.content,
-          ended_at: new Date().toISOString(),
-          pid: null,
-          ...(delta ? { delta } : {}),
-        });
-        await this.mirrorWorker(completed);
+
+        // Silent-failure detection. Codex sometimes returns a
+        // "successful" tool call even when its underlying actions
+        // were blocked (sandbox denials on .git/worktrees/*.lock,
+        // mid-call rate-limit degradation, etc.). The agent's prose
+        // describes the failure but `status: completed` would mislead
+        // the supervisor. Reclassify when the captured stderr matches
+        // a known denial pattern, OR when the prose itself contains
+        // a high-confidence sandbox-denial marker AND no commits
+        // landed in a worktree role.
+        // Stderr classifier — codex often prints sandbox denials and
+        // rate-limit messages here even when the tool call returns a
+        // "successful" result (because the agent recovered or wrote
+        // up the failure in prose). Empty message string because we
+        // didn't throw; we only have stderr + the prose to look at.
+        const stderrClass = classifyErrorDetailed("", stderrTail);
+        // Prose denial markers — high-confidence patterns that only
+        // appear when codex's filesystem ops were rejected. Kept
+        // narrow on purpose; matching the broad classifier on prose
+        // false-positives on agents that legitimately discuss errors.
+        const proseDeniedSignal =
+          /\boperation not permitted\b[^\n]{0,160}\.git\b/i.test(result.content ?? "") ||
+          /\b\.git\/worktrees\/[^\n]{0,120}\.lock\b/i.test(result.content ?? "");
+        const noWorkLanded =
+          preset.worktree && delta?.commits_ahead === 0 && proseDeniedSignal;
+        const shouldDemote = stderrClass.kind !== null || noWorkLanded;
+
+        if (shouldDemote) {
+          // Treat as failure with the strongest classified kind we
+          // have. Falls back to sandbox_denied when only the prose
+          // signal fired.
+          const kind = stderrClass.kind ?? "sandbox_denied";
+          const stderr_tail = stderrTail.slice(-2048) || undefined;
+          const updated = await this.opts.registry.update(agent_id, {
+            status: "failed",
+            thread_id: result.threadId || null,
+            last_output: result.content,
+            ended_at: new Date().toISOString(),
+            pid: null,
+            ...(delta ? { delta } : {}),
+            error: {
+              message:
+                kind === "rate_limited"
+                  ? "codex returned a result but stderr indicates a rate-limit hit during the run"
+                  : "codex returned a result but the agent's actions were blocked (sandbox denial detected post-completion)",
+              kind,
+              ...(stderr_tail ? { stderr_tail } : {}),
+              ...(stderrClass.retry_at ? { retry_at: stderrClass.retry_at } : {}),
+              ...(stderrClass.retry_after_seconds !== undefined
+                ? { retry_after_seconds: stderrClass.retry_after_seconds }
+                : {}),
+            },
+          });
+          await this.mirrorWorker(updated);
+        } else {
+          const completed = await this.opts.registry.update(agent_id, {
+            status: "completed",
+            thread_id: result.threadId || null,
+            last_output: result.content,
+            ended_at: new Date().toISOString(),
+            pid: null,
+            ...(delta ? { delta } : {}),
+          });
+          await this.mirrorWorker(completed);
+        }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         const finalStatus = ctx.cancelRequested ? "cancelled" : "failed";

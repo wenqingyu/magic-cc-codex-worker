@@ -2,6 +2,20 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.1] — 2026-04-27
+
+This release closes the dispatcher-trust gap and adds a visibility surface for the workspace-write sandbox limitation that 0.4.0 only partially worked around.
+
+### Fixed
+- **`status: "completed"` no longer hides sandbox/quota failures.** Codex sometimes returns a "successful" tool call even when its underlying actions were blocked — typically `Operation not permitted` on `.git/worktrees/<id>/index.lock`, or a rate-limit hit mid-call. The agent describes the failure in prose, but the dispatcher trusted `completed` and moved on. Fix: post-completion, the orchestrator now classifies the captured stderr (and watches for high-confidence `.git/worktrees/*.lock` markers in prose paired with `commits_ahead === 0`) and demotes `completed` → `failed` with the right `kind` (`sandbox_denied` or `rate_limited`). `last_output` is preserved on the failure record. Five new regression tests cover stderr-detected denials, mid-call rate limits, prose-only signal, the no-demote success path, and the false-positive guard for "agent recovered and committed despite mentioning the error".
+- **Rate-limit retry hints are now also captured on the success path.** `error.retry_at` and `error.retry_after_seconds` (added in 0.4.0 for thrown failures) now also populate when a "successful" call is demoted because stderr showed a rate-limit message.
+
+### Added
+- **Loud warning when the effective implementer sandbox is `workspace-write`.** Empirical follow-up to 0.4.0: even with the canonicalized `writable_roots` workaround, `.git/worktrees/<id>/index.lock` writes are still rejected on macOS for ~33-67% of spawns. The 0.4.0 default switch to `danger-full-access` avoids this entirely, but the gap commonly surprises users who: (a) have a project `magic-codex.toml` pinning `workspace-write`, (b) pass `overrides.sandbox = "workspace-write"` per spawn, or (c) are loading a cached older version of the plugin. Each implementer spawn whose effective sandbox is `workspace-write` now logs a one-line `[magic-codex] WARNING: ...` to stderr explaining what's happening and pointing at the recommended remediation.
+
+### Notes
+- The `workspace-write` sandbox limitation isn't fully closeable from the plugin side — codex's seatbelt policy doesn't expose a knob to add `*/.git/worktrees/<own-worktree-id>/*` to the writable scope dynamically. If you must use `workspace-write` (e.g., for stricter network egress isolation), expect `index.lock` denials to still happen; rely on the new silent-failure detection above to surface them as `failed`/`kind=sandbox_denied` instead of silent `completed`.
+
 ## [0.4.0] — 2026-04-27
 
 This release closes a batch of operational potholes surfaced by ~50 real spawns across multi-repo workspaces. Most of the changes are defaults that empirical evidence has already validated; a few are bug fixes for things the test suite never caught because they only manifest across process restarts or in repos with non-`main` defaults.

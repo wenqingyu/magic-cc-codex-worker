@@ -872,6 +872,209 @@ describe("Orchestrator .gitignore management", () => {
   });
 });
 
+describe("Orchestrator silent-failure detection on the success path", () => {
+  // Regression for the dispatcher trust bug: codex would return a
+  // "successful" tool call with status=completed, error_kind=null, but
+  // the agent's prose explained that .git writes were blocked and no
+  // commits actually landed. The dispatcher saw `completed` and moved
+  // on. Fix: post-completion, classify the captured stderr and demote
+  // the run to `failed` when sandbox denials or rate-limit messages
+  // were detected.
+  let stateDir: string;
+  let repo: string;
+  let registry: Registry;
+  let worktrees: Worktrees;
+
+  beforeEach(async () => {
+    stateDir = mkdtempSync(join(tmpdir(), "orch-silent-state-"));
+    repo = mkdtempSync(join(tmpdir(), "orch-silent-repo-"));
+    await execa("git", ["-C", repo, "init", "-q", "-b", "main"]);
+    await execa("git", ["-C", repo, "config", "user.email", "t@t"]);
+    await execa("git", ["-C", repo, "config", "user.name", "t"]);
+    await execa("git", ["-C", repo, "commit", "--allow-empty", "-m", "init"]);
+    registry = new Registry(stateDir);
+    worktrees = new Worktrees(repo);
+  });
+
+  afterEach(() => {
+    rmSync(stateDir, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  it("demotes completed → failed when stderr contains a sandbox denial", async () => {
+    const factory = (opts?: { onStderr?: (chunk: Buffer) => void }) =>
+      ({
+        start: vi.fn().mockImplementation(async () => {
+          // Codex emitted a denial but the tool call still resolves —
+          // common when the agent caught the error and wrote prose.
+          opts?.onStderr?.(
+            Buffer.from(
+              "sandbox: write blocked at /tmp/repo/.git/worktrees/x/index.lock\n",
+            ),
+          );
+        }),
+        call: vi.fn().mockResolvedValue({
+          threadId: "t-1",
+          content: "I tried to commit but couldn't.",
+          raw: {},
+        }),
+        stop: vi.fn().mockResolvedValue(undefined),
+        get pid() {
+          return 1;
+        },
+      }) as unknown as CodexChild;
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: factory,
+      rolesDir,
+      repoRoot: repo,
+    });
+    const res = await orch.spawn({ role: "implementer", prompt: "p" });
+    await orch.waitForAgent(res.agent_id);
+    const rec = await registry.get(res.agent_id);
+    expect(rec!.status).toBe("failed");
+    expect(rec!.error?.kind).toBe("sandbox_denied");
+    // Original prose is preserved on the failure record.
+    expect(rec!.last_output).toContain("I tried to commit");
+  });
+
+  it("demotes completed → failed when stderr contains a rate-limit message + populates retry_at", async () => {
+    const factory = (opts?: { onStderr?: (chunk: Buffer) => void }) =>
+      ({
+        start: vi.fn().mockImplementation(async () => {
+          opts?.onStderr?.(
+            Buffer.from(
+              "ERROR: rate limit exceeded; try again in 1800 seconds\n",
+            ),
+          );
+        }),
+        call: vi.fn().mockResolvedValue({
+          threadId: "t-1",
+          content: "partial work — quota cut us off",
+          raw: {},
+        }),
+        stop: vi.fn().mockResolvedValue(undefined),
+        get pid() {
+          return 1;
+        },
+      }) as unknown as CodexChild;
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: factory,
+      rolesDir,
+      repoRoot: repo,
+    });
+    const res = await orch.spawn({ role: "implementer", prompt: "p" });
+    await orch.waitForAgent(res.agent_id);
+    const rec = await registry.get(res.agent_id);
+    expect(rec!.status).toBe("failed");
+    expect(rec!.error?.kind).toBe("rate_limited");
+    expect(rec!.error?.retry_after_seconds).toBe(1800);
+    expect(rec!.error?.retry_at).toBeTruthy();
+  });
+
+  it("demotes via prose signal when stderr is clean but the agent reports .git/worktrees lock denied + commits_ahead=0", async () => {
+    const factory = () =>
+      ({
+        start: vi.fn().mockResolvedValue(undefined),
+        call: vi.fn().mockResolvedValue({
+          threadId: "t-1",
+          // Real-world example from the user's bug report.
+          content:
+            "Branching and commit could not be completed. .git writes are blocked: Operation not permitted on /repo/.git/worktrees/codex-impl-x/index.lock. The work is on codex/x but never committed.",
+          raw: {},
+        }),
+        stop: vi.fn().mockResolvedValue(undefined),
+        get pid() {
+          return 1;
+        },
+      }) as unknown as CodexChild;
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: factory,
+      rolesDir,
+      repoRoot: repo,
+    });
+    const res = await orch.spawn({ role: "implementer", prompt: "p" });
+    await orch.waitForAgent(res.agent_id);
+    const rec = await registry.get(res.agent_id);
+    expect(rec!.status).toBe("failed");
+    expect(rec!.error?.kind).toBe("sandbox_denied");
+  });
+
+  it("does NOT demote a clean successful run", async () => {
+    const factory = () =>
+      ({
+        start: vi.fn().mockResolvedValue(undefined),
+        call: vi.fn().mockImplementation(async (input: { cwd: string }) => {
+          // Land an actual commit — proves the no-demote path with
+          // commits_ahead > 0.
+          const { writeFileSync } = await import("node:fs");
+          writeFileSync(join(input.cwd, "OK.md"), "ok\n");
+          await execa("git", ["-C", input.cwd, "add", "OK.md"]);
+          await execa("git", ["-C", input.cwd, "commit", "-m", "ok"]);
+          return { threadId: "t", content: "all good", raw: {} };
+        }),
+        stop: vi.fn().mockResolvedValue(undefined),
+        get pid() {
+          return 1;
+        },
+      }) as unknown as CodexChild;
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: factory,
+      rolesDir,
+      repoRoot: repo,
+    });
+    const res = await orch.spawn({ role: "implementer", prompt: "p" });
+    await orch.waitForAgent(res.agent_id);
+    const rec = await registry.get(res.agent_id);
+    expect(rec!.status).toBe("completed");
+    expect(rec!.error).toBeNull();
+  });
+
+  it("does NOT demote when prose mentions errors but commits actually landed", async () => {
+    // Edge case: agent worked through a transient denial, recovered,
+    // and successfully committed. Prose mentions the error, but
+    // commits_ahead > 0 means the work landed — don't false-fail.
+    const factory = () =>
+      ({
+        start: vi.fn().mockResolvedValue(undefined),
+        call: vi.fn().mockImplementation(async (input: { cwd: string }) => {
+          const { writeFileSync } = await import("node:fs");
+          writeFileSync(join(input.cwd, "OK.md"), "recovered\n");
+          await execa("git", ["-C", input.cwd, "add", "OK.md"]);
+          await execa("git", ["-C", input.cwd, "commit", "-m", "after retry"]);
+          return {
+            threadId: "t",
+            content:
+              "First attempt failed with operation not permitted on .git/worktrees/x/index.lock, retried and it worked.",
+            raw: {},
+          };
+        }),
+        stop: vi.fn().mockResolvedValue(undefined),
+        get pid() {
+          return 1;
+        },
+      }) as unknown as CodexChild;
+    const orch = new Orchestrator({
+      registry,
+      worktrees,
+      codexFactory: factory,
+      rolesDir,
+      repoRoot: repo,
+    });
+    const res = await orch.spawn({ role: "implementer", prompt: "p" });
+    await orch.waitForAgent(res.agent_id);
+    const rec = await registry.get(res.agent_id);
+    expect(rec!.status).toBe("completed");
+  });
+});
+
 describe("Orchestrator delta capture (post-completion structured output)", () => {
   let stateDir: string;
   let repo: string;

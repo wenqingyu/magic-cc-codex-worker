@@ -10,7 +10,13 @@ describe("loadRole — built-in defaults", () => {
   it("loads implementer role", async () => {
     const role = await loadRole("implementer", { defaultsDir });
     expect(role.model).toBeUndefined(); // inherits codex default unless overridden
-    expect(role.sandbox).toBe("workspace-write");
+    // 0.4.0: switched implementer default from workspace-write to
+    // danger-full-access. Empirically workspace-write silently dropped
+    // .git/worktrees/*.lock writes for ~15-20% of spawns even with the
+    // writable_roots .git workaround. The agent is already isolated
+    // to a throwaway worktree branch, so danger-full-access is the
+    // smaller blast radius. Override via magic-codex.toml.
+    expect(role.sandbox).toBe("danger-full-access");
     expect(role.worktree).toBe(true);
     expect(role.timeout_seconds).toBe(1800);
     expect(role.developer_instructions).toContain("isolated git worktree");
@@ -54,7 +60,7 @@ timeout_seconds = 9999
     });
     expect(role.model).toBe("gpt-spawn-override");
     expect(role.timeout_seconds).toBe(9999);
-    expect(role.sandbox).toBe("workspace-write");
+    expect(role.sandbox).toBe("danger-full-access");
     expect(role.developer_instructions).toContain("worktree");
   });
 

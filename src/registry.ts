@@ -19,6 +19,10 @@ export interface CreateInput {
   last_prompt: string;
   issue_id?: string | null;
   pr_number?: number | null;
+  /** Absolute path to the git repo root the agent operates against.
+   *  Persisted so downstream ops (merge/discard/cancel --force) target
+   *  the correct repo in multi-repo workspaces. */
+  repo_root?: string | null;
 }
 
 const ROLE_PREFIX: Record<AgentRole, string> = {
@@ -51,8 +55,40 @@ export class Registry {
     if (existsSync(this.stateFile)) {
       const raw = await readFile(this.stateFile, "utf8");
       this.state = JSON.parse(raw) as RegistrySnapshot;
+      await this.sweepZombies();
     }
     this.loaded = true;
+  }
+
+  /** Mark any record left in `running` or `queued` from a previous
+   *  server process as `failed` with kind=`zombie`. The orchestrator's
+   *  in-memory `tasks`/`active` maps don't survive a restart, so any
+   *  such record is by definition orphaned — its codex child is gone
+   *  and no one will ever transition it to a terminal state.
+   *  Without this sweep, `list`/`status` showed phantom "running"
+   *  agents indefinitely (some lingered for days in the wild). */
+  private async sweepZombies(): Promise<void> {
+    const now = new Date().toISOString();
+    let changed = false;
+    for (const rec of Object.values(this.state.agents)) {
+      if (rec.status !== "running" && rec.status !== "queued") continue;
+      changed = true;
+      rec.status = "failed";
+      rec.ended_at = rec.ended_at ?? now;
+      rec.pid = null;
+      rec.error = {
+        message:
+          "agent was marked running/queued in a prior MCP server process; the codex child no longer exists",
+        kind: "zombie",
+      };
+    }
+    if (changed) {
+      // Awaited so the load() caller (and afterEach() cleanup in tests)
+      // doesn't race with an in-flight write. Non-fatal — a write
+      // error here just means the swept state isn't persisted; next
+      // mutation will pick it up.
+      await this.persist().catch(() => undefined);
+    }
   }
 
   private async persist() {
@@ -95,6 +131,7 @@ export class Registry {
         last_output: null,
         error: null,
         pid: null,
+        repo_root: input.repo_root ?? null,
       };
       this.state.agents[agent_id] = rec;
       await this.persist();

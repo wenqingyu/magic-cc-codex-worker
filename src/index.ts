@@ -41,6 +41,9 @@ function agentSummary(rec: AgentRecord) {
     status: rec.status,
     thread_id: rec.thread_id,
     worktree_path: rec.worktree?.path ?? null,
+    branch: rec.worktree?.branch ?? null,
+    base_ref: rec.worktree?.base_ref ?? null,
+    repo_root: rec.repo_root ?? null,
     issue_id: rec.issue_id,
     pr_number: rec.pr_number,
     created_at: rec.created_at,
@@ -49,7 +52,15 @@ function agentSummary(rec: AgentRecord) {
     last_output_preview: rec.last_output?.slice(0, 500) ?? null,
     error_summary: rec.error?.message ?? null,
     error_kind: rec.error?.kind ?? null,
+    error_retry_at: rec.error?.retry_at ?? null,
+    error_retry_after_seconds: rec.error?.retry_after_seconds ?? null,
     stderr_log: rec.stderr_log ?? null,
+    // Structured run output for completed worktree-bearing agents.
+    // Surfacing here (not just in result()) so supervisors polling
+    // `status` see commit/diff context without paging the full output.
+    commit_sha: rec.delta?.commit_sha ?? null,
+    diff_stat: rec.delta?.diff_stat ?? null,
+    commits_ahead: rec.delta?.commits_ahead ?? null,
   };
 }
 
@@ -163,7 +174,7 @@ async function main() {
   });
 
   const server = new Server(
-    { name: "magic-codex", version: "0.3.9" },
+    { name: "magic-codex", version: "0.4.0" },
     { capabilities: { tools: {} } },
   );
 
@@ -380,6 +391,16 @@ async function main() {
         status: rec.status,
         output: rec.last_output,
         error: rec.error,
+        // Structured fields outside the prose output so callers can
+        // pick up branch/sha/diff without having to parse the agent's
+        // freeform last_output (which is what gets truncated).
+        branch: rec.worktree?.branch ?? null,
+        base_ref: rec.worktree?.base_ref ?? null,
+        worktree_path: rec.worktree?.path ?? null,
+        repo_root: rec.repo_root ?? null,
+        commit_sha: rec.delta?.commit_sha ?? null,
+        commits_ahead: rec.delta?.commits_ahead ?? null,
+        diff_stat: rec.delta?.diff_stat ?? null,
       };
       return {
         content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],

@@ -25280,8 +25280,34 @@ var Registry = class {
     if (existsSync(this.stateFile)) {
       const raw = await readFile(this.stateFile, "utf8");
       this.state = JSON.parse(raw);
+      await this.sweepZombies();
     }
     this.loaded = true;
+  }
+  /** Mark any record left in `running` or `queued` from a previous
+   *  server process as `failed` with kind=`zombie`. The orchestrator's
+   *  in-memory `tasks`/`active` maps don't survive a restart, so any
+   *  such record is by definition orphaned — its codex child is gone
+   *  and no one will ever transition it to a terminal state.
+   *  Without this sweep, `list`/`status` showed phantom "running"
+   *  agents indefinitely (some lingered for days in the wild). */
+  async sweepZombies() {
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    let changed = false;
+    for (const rec of Object.values(this.state.agents)) {
+      if (rec.status !== "running" && rec.status !== "queued") continue;
+      changed = true;
+      rec.status = "failed";
+      rec.ended_at = rec.ended_at ?? now;
+      rec.pid = null;
+      rec.error = {
+        message: "agent was marked running/queued in a prior MCP server process; the codex child no longer exists",
+        kind: "zombie"
+      };
+    }
+    if (changed) {
+      await this.persist().catch(() => void 0);
+    }
   }
   async persist() {
     const tmp = `${this.stateFile}.tmp`;
@@ -25320,7 +25346,8 @@ var Registry = class {
         last_prompt: input.last_prompt,
         last_output: null,
         error: null,
-        pid: null
+        pid: null,
+        repo_root: input.repo_root ?? null
       };
       this.state.agents[agent_id] = rec;
       await this.persist();
@@ -25349,6 +25376,7 @@ var Registry = class {
 };
 
 // src/worktree.ts
+import { existsSync as existsSync2, readFileSync as readFileSync3, writeFileSync as writeFileSync2, appendFileSync as appendFileSync2 } from "node:fs";
 import { join as join2, resolve } from "node:path";
 var Worktrees = class {
   constructor(repoRoot) {
@@ -25360,6 +25388,19 @@ var Worktrees = class {
   async create(input) {
     const parent = input.parent_dir ?? this.defaultParent();
     const path6 = resolve(parent, input.agent_id);
+    if (input.fetch_remote) {
+      try {
+        await execa("git", [
+          "-C",
+          this.repoRoot,
+          "fetch",
+          "origin",
+          input.base_ref,
+          "--quiet"
+        ]);
+      } catch {
+      }
+    }
     await execa("git", [
       "-C",
       this.repoRoot,
@@ -25376,6 +25417,73 @@ var Worktrees = class {
       base_ref: input.base_ref,
       created_at: (/* @__PURE__ */ new Date()).toISOString()
     };
+  }
+  /** Idempotently ensure `.magic-codex/` is in the repo's .gitignore so
+   *  worktrees + state never get accidentally `git add -A`'d. Returns
+   *  true when the file was modified.
+   *  Best-effort — never throws (some repos don't have a writable
+   *  workdir, the file may be readonly, etc.). */
+  ensureGitignore() {
+    const ignoreEntry = ".magic-codex/";
+    const gitignorePath = join2(this.repoRoot, ".gitignore");
+    try {
+      if (!existsSync2(gitignorePath)) {
+        writeFileSync2(gitignorePath, `${ignoreEntry}
+`, "utf8");
+        return true;
+      }
+      const raw = readFileSync3(gitignorePath, "utf8");
+      const lines = raw.split(/\r?\n/);
+      const present = lines.some((line) => {
+        const trimmed = line.trim();
+        if (trimmed === "" || trimmed.startsWith("#")) return false;
+        return trimmed === ignoreEntry || trimmed === ".magic-codex" || trimmed === ".magic-codex/*" || trimmed === ".magic-codex/**";
+      });
+      if (present) return false;
+      const sep = raw.endsWith("\n") ? "" : "\n";
+      appendFileSync2(gitignorePath, `${sep}${ignoreEntry}
+`, "utf8");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  /** Detect the repo's default branch. Tries (in order):
+   *  1. `origin/HEAD` symbolic ref (set by `git clone`).
+   *  2. Local refs `main` then `master` then `develop`.
+   *  Returns null when no candidate is found. Used to pick a sensible
+   *  base_ref when the caller didn't specify one — the prior fallback
+   *  to a hardcoded `"main"` failed on ~40% of real-world repos that
+   *  use `master`. */
+  async detectDefaultBranch() {
+    try {
+      const { stdout } = await execa("git", [
+        "-C",
+        this.repoRoot,
+        "symbolic-ref",
+        "--short",
+        "refs/remotes/origin/HEAD"
+      ]);
+      const ref = stdout.trim();
+      if (ref.startsWith("origin/")) return ref.slice("origin/".length);
+      if (ref) return ref;
+    } catch {
+    }
+    for (const candidate of ["main", "master", "develop"]) {
+      try {
+        await execa("git", [
+          "-C",
+          this.repoRoot,
+          "rev-parse",
+          "--verify",
+          "--quiet",
+          `refs/heads/${candidate}`
+        ]);
+        return candidate;
+      } catch {
+      }
+    }
+    return null;
   }
   async createDetached(input) {
     const parent = input.parent_dir ?? this.defaultParent();
@@ -25432,23 +25540,66 @@ var Worktrees = class {
 };
 
 // src/orchestrator.ts
-import { createWriteStream as createWriteStream2, mkdirSync, realpathSync } from "node:fs";
+import {
+  createWriteStream as createWriteStream2,
+  existsSync as existsSync3,
+  mkdirSync,
+  realpathSync
+} from "node:fs";
 import { join as join4 } from "node:path";
 
 // src/classify-error.ts
-function classifyError(message, stderrTail) {
+function classifyErrorDetailed(message, stderrTail, now = /* @__PURE__ */ new Date()) {
   const hay = `${message}
 ${stderrTail}`.toLowerCase();
   if (/\brate[ -]?limit(ed|ing)?\b/.test(hay) || /\bdaily (message )?limit\b/.test(hay) || /\busage limit\b/.test(hay) || /\bquota exceeded\b/.test(hay) || /\btoo many requests\b/.test(hay) || /\byou['']?ve (hit|reached) (your|the)\b.*\b(limit|quota)\b/.test(hay) || /\b429\b[^\n]{0,80}\b(too many|rate)\b/.test(hay)) {
-    return "rate_limited";
+    const retry = parseRetryHint(hay, now);
+    return { kind: "rate_limited", ...retry };
   }
   if (/\bsandbox\b[^\n]{0,120}\b(deny|denied|blocked|rejected)\b/.test(hay) || /\boperation not permitted\b[^\n]{0,120}\.git\b/.test(hay)) {
-    return "sandbox_denied";
+    return { kind: "sandbox_denied" };
   }
   if (/\btimeout after \d+s\b/.test(hay) || /-32001\b[^\n]*\btimed out\b/.test(hay) || /\brequest timed out\b/.test(hay)) {
-    return "timeout";
+    return { kind: "timeout" };
   }
-  return null;
+  return { kind: null };
+}
+function parseRetryHint(hay, now) {
+  const secondsMatch = /\b(?:retry|try again)\b[^\n]{0,40}\b(?:in|after)\s+(\d{1,5})\s*(?:s\b|second)/i.exec(
+    hay
+  );
+  if (secondsMatch) {
+    const sec = Number(secondsMatch[1]);
+    if (Number.isFinite(sec) && sec >= 0) {
+      return {
+        retry_at: new Date(now.getTime() + sec * 1e3).toISOString(),
+        retry_after_seconds: sec
+      };
+    }
+  }
+  const clockMatch = /\b(?:try again|available(?: again)?|retry)\b[^\n]{0,40}\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i.exec(
+    hay
+  );
+  if (clockMatch) {
+    let hh = Number(clockMatch[1]);
+    const mm = Number(clockMatch[2] ?? "0");
+    const ampm = clockMatch[3]?.toLowerCase();
+    if (ampm === "pm" && hh < 12) hh += 12;
+    if (ampm === "am" && hh === 12) hh = 0;
+    if (hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
+      const target = new Date(now);
+      target.setHours(hh, mm, 0, 0);
+      if (target.getTime() <= now.getTime()) {
+        target.setDate(target.getDate() + 1);
+      }
+      const sec = Math.round((target.getTime() - now.getTime()) / 1e3);
+      return {
+        retry_at: target.toISOString(),
+        retry_after_seconds: sec
+      };
+    }
+  }
+  return {};
 }
 
 // src/roles/loader.ts
@@ -26211,9 +26362,13 @@ var Orchestrator = class {
       }
     });
     const model = preset.model;
-    const baseRef = input.base_ref ?? "main";
     const repoRoot = input.repo_root ?? this.opts.repoRoot;
     const worktrees = input.repo_root ? new Worktrees(input.repo_root) : this.opts.worktrees;
+    let baseRef = input.base_ref;
+    if (!baseRef && preset.worktree && !input.pr_number) {
+      baseRef = await worktrees.detectDefaultBranch() ?? void 0;
+    }
+    baseRef = baseRef ?? "main";
     const rec = await this.opts.registry.create({
       role: input.role,
       cwd: repoRoot,
@@ -26222,7 +26377,8 @@ var Orchestrator = class {
       approval_policy: preset.approval_policy,
       last_prompt: input.prompt,
       issue_id: input.issue_id ?? null,
-      pr_number: input.pr_number ?? null
+      pr_number: input.pr_number ?? null,
+      repo_root: repoRoot
     });
     let linearIssue = null;
     if (input.issue_id && this.opts.mf?.detected && this.opts.linear?.isConfigured) {
@@ -26243,10 +26399,16 @@ var Orchestrator = class {
       await this.opts.registry.update(rec.agent_id, { cwd, worktree: worktreeInfo });
     } else if (preset.worktree) {
       const branch = this.makeBranchName(rec.agent_id, input.issue_id, linearIssue);
+      worktrees.ensureGitignore();
       worktreeInfo = await worktrees.create({
         agent_id: rec.agent_id,
         branch,
-        base_ref: baseRef
+        base_ref: baseRef,
+        // Refresh origin/<base_ref> so the worktree starts from the
+        // latest published baseline, not whatever was fetched at server
+        // startup. Long-lived MCP servers were producing worktrees
+        // pinned to commits that were stale by hours/days.
+        fetch_remote: true
       });
       cwd = worktreeInfo.path;
       await this.opts.registry.update(rec.agent_id, { cwd, worktree: worktreeInfo });
@@ -26266,15 +26428,20 @@ var Orchestrator = class {
     });
     await this.mirrorWorker(running);
     const writable_roots = worktreeInfo && preset.sandbox === "workspace-write" ? [canonicalGitDir(repoRoot)] : void 0;
-    this.launchBackground(rec.agent_id, preset, {
-      prompt: input.prompt,
-      cwd,
-      model,
-      sandbox: preset.sandbox,
-      approval_policy: preset.approval_policy,
-      developer_instructions: instructions,
-      ...writable_roots ? { writable_roots } : {}
-    });
+    this.launchBackground(
+      rec.agent_id,
+      preset,
+      {
+        prompt: input.prompt,
+        cwd,
+        model,
+        sandbox: preset.sandbox,
+        approval_policy: preset.approval_policy,
+        developer_instructions: instructions,
+        ...writable_roots ? { writable_roots } : {}
+      },
+      worktreeInfo?.base_ref ?? null
+    );
     return {
       agent_id: rec.agent_id,
       status: "running",
@@ -26322,11 +26489,16 @@ var Orchestrator = class {
       error: null,
       last_prompt: input.prompt
     });
-    this.launchBackground(rec.agent_id, preset, {
-      prompt: input.prompt,
-      cwd: rec.cwd,
-      thread_id: rec.thread_id
-    });
+    this.launchBackground(
+      rec.agent_id,
+      preset,
+      {
+        prompt: input.prompt,
+        cwd: rec.cwd,
+        thread_id: rec.thread_id
+      },
+      rec.worktree?.base_ref ?? null
+    );
     return {
       agent_id: rec.agent_id,
       status: "running",
@@ -26358,7 +26530,7 @@ var Orchestrator = class {
     let worktree_removed = false;
     if (input.force && rec.worktree) {
       try {
-        await this.opts.worktrees.remove(rec.worktree.path, { delete_branch: true });
+        await this.worktreesFor(rec).remove(rec.worktree.path, { delete_branch: true });
         worktree_removed = true;
         await this.opts.registry.update(rec.agent_id, { worktree: null });
       } catch {
@@ -26380,7 +26552,8 @@ var Orchestrator = class {
         `agent ${input.agent_id} is ${rec.status}; only completed agents can be merged`
       );
     }
-    const { sha } = await this.opts.worktrees.merge({
+    const wt = this.worktreesFor(rec);
+    const { sha } = await wt.merge({
       branch: rec.worktree.branch,
       base_ref: rec.worktree.base_ref,
       strategy: input.strategy,
@@ -26388,7 +26561,7 @@ var Orchestrator = class {
     });
     let worktree_removed = false;
     if (!input.keep_worktree) {
-      await this.opts.worktrees.remove(rec.worktree.path, { delete_branch: true });
+      await wt.remove(rec.worktree.path, { delete_branch: true });
       worktree_removed = true;
       await this.opts.registry.update(rec.agent_id, { worktree: null });
     }
@@ -26410,12 +26583,21 @@ var Orchestrator = class {
     let worktree_removed = false;
     let branch_deleted = false;
     if (rec.worktree) {
-      await this.opts.worktrees.remove(rec.worktree.path, { delete_branch: true });
+      await this.worktreesFor(rec).remove(rec.worktree.path, { delete_branch: true });
       worktree_removed = true;
       branch_deleted = true;
       await this.opts.registry.update(rec.agent_id, { worktree: null });
     }
     return { agent_id: rec.agent_id, worktree_removed, branch_deleted };
+  }
+  /** Return a Worktrees instance scoped to the agent's recorded
+   *  repo_root, falling back to the orchestrator default for legacy
+   *  records (created before 0.4.0) that don't have one. */
+  worktreesFor(rec) {
+    if (rec.repo_root && rec.repo_root !== this.opts.repoRoot) {
+      return new Worktrees(rec.repo_root);
+    }
+    return this.opts.worktrees;
   }
   async waitForAgent(agent_id) {
     const task = this.tasks.get(agent_id);
@@ -26447,9 +26629,12 @@ var Orchestrator = class {
     } else if (input.overrides?.developer_instructions_append) {
       instructions += "\n\n" + input.overrides.developer_instructions_append;
     }
+    if (preset.worktree && cwd && detectRustRepo(cwd)) {
+      instructions = instructions + "\n\n## Rust formatting guardrail\nDO NOT run `cargo fmt`, `rustfmt`, or any auto-format tool. These reformat unrelated files and produce massive churn diffs. If a build step would format files as a side effect, disable that step or run a narrower one. Before committing, manually `git diff --stat` and revert any non-target file you didn't intend to change.";
+    }
     return instructions;
   }
-  launchBackground(agent_id, preset, callInput) {
+  launchBackground(agent_id, preset, callInput, baseRef) {
     let logStream = null;
     let logPath = null;
     try {
@@ -26488,12 +26673,14 @@ var Orchestrator = class {
           ...logPath ? { stderr_log: logPath } : {}
         });
         const result = await withTimeout(child.call(callInput, timeoutMs), timeoutMs);
+        const delta = await captureDelta(callInput.cwd, baseRef).catch(() => null);
         const completed = await this.opts.registry.update(agent_id, {
           status: "completed",
           thread_id: result.threadId || null,
           last_output: result.content,
           ended_at: (/* @__PURE__ */ new Date()).toISOString(),
-          pid: null
+          pid: null,
+          ...delta ? { delta } : {}
         });
         await this.mirrorWorker(completed);
       } catch (err) {
@@ -26505,12 +26692,14 @@ var Orchestrator = class {
           pid: null
         };
         if (finalStatus === "failed") {
-          const kind = classifyError(message, stderrTail);
+          const classified = classifyErrorDetailed(message, stderrTail);
           const stderr_tail = stderrTail.slice(-2048) || void 0;
           patch.error = {
             message,
             ...stderr_tail ? { stderr_tail } : {},
-            ...kind ? { kind } : {}
+            ...classified.kind ? { kind: classified.kind } : {},
+            ...classified.retry_at ? { retry_at: classified.retry_at } : {},
+            ...classified.retry_after_seconds !== void 0 ? { retry_after_seconds: classified.retry_after_seconds } : {}
           };
         }
         const updated = await this.opts.registry.update(agent_id, patch);
@@ -26524,6 +26713,82 @@ var Orchestrator = class {
     this.tasks.set(agent_id, task);
   }
 };
+function detectRustRepo(cwd) {
+  try {
+    return existsSync3(join4(cwd, "Cargo.toml"));
+  } catch {
+    return false;
+  }
+}
+async function captureDelta(cwd, baseRef) {
+  try {
+    await execa("git", ["-C", cwd, "rev-parse", "--is-inside-work-tree"]);
+  } catch {
+    return null;
+  }
+  let commit_sha = null;
+  try {
+    const { stdout } = await execa("git", ["-C", cwd, "rev-parse", "HEAD"]);
+    commit_sha = stdout.trim() || null;
+  } catch {
+  }
+  let branch = null;
+  try {
+    const { stdout } = await execa("git", [
+      "-C",
+      cwd,
+      "rev-parse",
+      "--abbrev-ref",
+      "HEAD"
+    ]);
+    const name = stdout.trim();
+    branch = name && name !== "HEAD" ? name : null;
+  } catch {
+  }
+  let diff_stat = null;
+  let commits_ahead = null;
+  if (baseRef) {
+    const mergeBase = await execa("git", [
+      "-C",
+      cwd,
+      "merge-base",
+      "HEAD",
+      baseRef
+    ]).then(
+      (r) => r.stdout.trim(),
+      () => null
+    );
+    if (mergeBase) {
+      const stat = await execa("git", [
+        "-C",
+        cwd,
+        "diff",
+        "--stat",
+        `${mergeBase}..HEAD`
+      ]).then(
+        (r) => r.stdout,
+        () => ""
+      );
+      diff_stat = stat ? stat.slice(0, 4096) : null;
+      const aheadStr = await execa("git", [
+        "-C",
+        cwd,
+        "rev-list",
+        "--count",
+        `${mergeBase}..HEAD`
+      ]).then(
+        (r) => r.stdout.trim(),
+        () => null
+      );
+      const n2 = aheadStr ? Number(aheadStr) : NaN;
+      commits_ahead = Number.isFinite(n2) ? n2 : null;
+    }
+  }
+  if (commit_sha === null && diff_stat === null && commits_ahead === null) {
+    return null;
+  }
+  return { commit_sha, branch, diff_stat, commits_ahead };
+}
 function canonicalGitDir(repoRoot) {
   const gitDir = join4(repoRoot, ".git");
   try {
@@ -27414,7 +27679,7 @@ var CodexChild = class {
       stderr: "pipe"
     });
     this.client = new Client(
-      { name: "magic-codex", version: "0.3.9" },
+      { name: "magic-codex", version: "0.4.0" },
       { capabilities: {} }
     );
     await this.client.connect(this.transport);
@@ -27552,11 +27817,11 @@ async function readLevelFromToml(path6) {
 }
 
 // src/mf/detect.ts
-import { existsSync as existsSync2 } from "node:fs";
+import { existsSync as existsSync4 } from "node:fs";
 import { join as join5 } from "node:path";
 function detectMf(repoRoot) {
-  const has_magic_flow_dir = existsSync2(join5(repoRoot, ".magic-flow"));
-  const has_workers_json = existsSync2(join5(repoRoot, "ops", "workers.json"));
+  const has_magic_flow_dir = existsSync4(join5(repoRoot, ".magic-flow"));
+  const has_workers_json = existsSync4(join5(repoRoot, "ops", "workers.json"));
   return {
     detected: has_magic_flow_dir || has_workers_json,
     repoRoot,
@@ -27649,7 +27914,7 @@ var LinearClient = class {
 };
 
 // src/mf/workers.ts
-import { existsSync as existsSync3 } from "node:fs";
+import { existsSync as existsSync5 } from "node:fs";
 import { readFile as readFile5, writeFile as writeFile2, mkdir as mkdir2, rename as rename2 } from "node:fs/promises";
 import { dirname, join as join7 } from "node:path";
 var WorkersMirror = class {
@@ -27660,7 +27925,7 @@ var WorkersMirror = class {
     return join7(this.repoRoot, "ops", "workers.json");
   }
   async load() {
-    if (!existsSync3(this.file)) return { version: 1, workers: {} };
+    if (!existsSync5(this.file)) return { version: 1, workers: {} };
     try {
       const raw = await readFile5(this.file, "utf8");
       const parsed = JSON.parse(raw);
@@ -27752,6 +28017,9 @@ function agentSummary(rec) {
     status: rec.status,
     thread_id: rec.thread_id,
     worktree_path: rec.worktree?.path ?? null,
+    branch: rec.worktree?.branch ?? null,
+    base_ref: rec.worktree?.base_ref ?? null,
+    repo_root: rec.repo_root ?? null,
     issue_id: rec.issue_id,
     pr_number: rec.pr_number,
     created_at: rec.created_at,
@@ -27760,7 +28028,15 @@ function agentSummary(rec) {
     last_output_preview: rec.last_output?.slice(0, 500) ?? null,
     error_summary: rec.error?.message ?? null,
     error_kind: rec.error?.kind ?? null,
-    stderr_log: rec.stderr_log ?? null
+    error_retry_at: rec.error?.retry_at ?? null,
+    error_retry_after_seconds: rec.error?.retry_after_seconds ?? null,
+    stderr_log: rec.stderr_log ?? null,
+    // Structured run output for completed worktree-bearing agents.
+    // Surfacing here (not just in result()) so supervisors polling
+    // `status` see commit/diff context without paging the full output.
+    commit_sha: rec.delta?.commit_sha ?? null,
+    diff_stat: rec.delta?.diff_stat ?? null,
+    commits_ahead: rec.delta?.commits_ahead ?? null
   };
 }
 var TRACE = process.env.MAGIC_CODEX_TRACE === "1";
@@ -27854,7 +28130,7 @@ async function main() {
     mfConventions
   });
   const server = new Server(
-    { name: "magic-codex", version: "0.3.9" },
+    { name: "magic-codex", version: "0.4.0" },
     { capabilities: { tools: {} } }
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -28057,7 +28333,17 @@ async function main() {
         agent_id: rec.agent_id,
         status: rec.status,
         output: rec.last_output,
-        error: rec.error
+        error: rec.error,
+        // Structured fields outside the prose output so callers can
+        // pick up branch/sha/diff without having to parse the agent's
+        // freeform last_output (which is what gets truncated).
+        branch: rec.worktree?.branch ?? null,
+        base_ref: rec.worktree?.base_ref ?? null,
+        worktree_path: rec.worktree?.path ?? null,
+        repo_root: rec.repo_root ?? null,
+        commit_sha: rec.delta?.commit_sha ?? null,
+        commits_ahead: rec.delta?.commits_ahead ?? null,
+        diff_stat: rec.delta?.diff_stat ?? null
       };
       return {
         content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],

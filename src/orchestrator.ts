@@ -1,15 +1,23 @@
-import { createWriteStream, mkdirSync, realpathSync, type WriteStream } from "node:fs";
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  realpathSync,
+  type WriteStream,
+} from "node:fs";
 import { join } from "node:path";
+import { execa } from "execa";
 import type { Registry } from "./registry.js";
 import { Worktrees } from "./worktree.js";
 import type {
+  AgentDelta,
   AgentRecord,
   AgentRole,
   ApprovalPolicy,
   SandboxMode,
 } from "./types.js";
 import type { CodexChild, CodexCallInput, CodexChildOptions } from "./mcp/codex-client.js";
-import { classifyError } from "./classify-error.js";
+import { classifyErrorDetailed } from "./classify-error.js";
 import { loadRole } from "./roles/loader.js";
 import type { RolePreset } from "./roles/types.js";
 import { renderTemplate } from "./roles/templater.js";
@@ -149,7 +157,6 @@ export class Orchestrator {
     // preset.model may be undefined — we pass it through and let codex mcp-server
     // use its own configured default. Override via magic-codex.toml or overrides.model.
     const model = preset.model;
-    const baseRef = input.base_ref ?? "main";
 
     // Per-spawn repo root. When caller provides input.repo_root (for multi-repo
     // workspaces where the MCP server's launch cwd isn't a git repo), use it.
@@ -158,6 +165,15 @@ export class Orchestrator {
     const worktrees = input.repo_root
       ? new Worktrees(input.repo_root)
       : this.opts.worktrees;
+
+    // Resolve base_ref. Caller wins; otherwise probe the repo for its
+    // default branch (origin/HEAD → main → master → develop) so spawns
+    // into a `master`-default repo don't fail with "invalid reference: main".
+    let baseRef = input.base_ref;
+    if (!baseRef && preset.worktree && !input.pr_number) {
+      baseRef = (await worktrees.detectDefaultBranch()) ?? undefined;
+    }
+    baseRef = baseRef ?? "main";
 
     const rec = await this.opts.registry.create({
       role: input.role,
@@ -168,6 +184,7 @@ export class Orchestrator {
       last_prompt: input.prompt,
       issue_id: input.issue_id ?? null,
       pr_number: input.pr_number ?? null,
+      repo_root: repoRoot,
     });
 
     // Optional Linear issue enrichment (MF mode)
@@ -195,10 +212,19 @@ export class Orchestrator {
       await this.opts.registry.update(rec.agent_id, { cwd, worktree: worktreeInfo });
     } else if (preset.worktree) {
       const branch = this.makeBranchName(rec.agent_id, input.issue_id, linearIssue);
+      // Ensure `.magic-codex/` is .gitignored before creating the
+      // worktree under it; otherwise the agent's first `git status`
+      // shows the worktree dir as untracked. Best-effort, idempotent.
+      worktrees.ensureGitignore();
       worktreeInfo = await worktrees.create({
         agent_id: rec.agent_id,
         branch,
         base_ref: baseRef,
+        // Refresh origin/<base_ref> so the worktree starts from the
+        // latest published baseline, not whatever was fetched at server
+        // startup. Long-lived MCP servers were producing worktrees
+        // pinned to commits that were stale by hours/days.
+        fetch_remote: true,
       });
       cwd = worktreeInfo.path;
       await this.opts.registry.update(rec.agent_id, { cwd, worktree: worktreeInfo });
@@ -236,15 +262,20 @@ export class Orchestrator {
         ? [canonicalGitDir(repoRoot)]
         : undefined;
 
-    this.launchBackground(rec.agent_id, preset, {
-      prompt: input.prompt,
-      cwd,
-      model,
-      sandbox: preset.sandbox,
-      approval_policy: preset.approval_policy,
-      developer_instructions: instructions,
-      ...(writable_roots ? { writable_roots } : {}),
-    });
+    this.launchBackground(
+      rec.agent_id,
+      preset,
+      {
+        prompt: input.prompt,
+        cwd,
+        model,
+        sandbox: preset.sandbox,
+        approval_policy: preset.approval_policy,
+        developer_instructions: instructions,
+        ...(writable_roots ? { writable_roots } : {}),
+      },
+      worktreeInfo?.base_ref ?? null,
+    );
 
     return {
       agent_id: rec.agent_id,
@@ -306,11 +337,16 @@ export class Orchestrator {
       last_prompt: input.prompt,
     });
 
-    this.launchBackground(rec.agent_id, preset, {
-      prompt: input.prompt,
-      cwd: rec.cwd,
-      thread_id: rec.thread_id,
-    });
+    this.launchBackground(
+      rec.agent_id,
+      preset,
+      {
+        prompt: input.prompt,
+        cwd: rec.cwd,
+        thread_id: rec.thread_id,
+      },
+      rec.worktree?.base_ref ?? null,
+    );
 
     return {
       agent_id: rec.agent_id,
@@ -345,7 +381,7 @@ export class Orchestrator {
     let worktree_removed = false;
     if (input.force && rec.worktree) {
       try {
-        await this.opts.worktrees.remove(rec.worktree.path, { delete_branch: true });
+        await this.worktreesFor(rec).remove(rec.worktree.path, { delete_branch: true });
         worktree_removed = true;
         await this.opts.registry.update(rec.agent_id, { worktree: null });
       } catch {
@@ -370,7 +406,8 @@ export class Orchestrator {
         `agent ${input.agent_id} is ${rec.status}; only completed agents can be merged`,
       );
     }
-    const { sha } = await this.opts.worktrees.merge({
+    const wt = this.worktreesFor(rec);
+    const { sha } = await wt.merge({
       branch: rec.worktree.branch,
       base_ref: rec.worktree.base_ref,
       strategy: input.strategy,
@@ -378,7 +415,7 @@ export class Orchestrator {
     });
     let worktree_removed = false;
     if (!input.keep_worktree) {
-      await this.opts.worktrees.remove(rec.worktree.path, { delete_branch: true });
+      await wt.remove(rec.worktree.path, { delete_branch: true });
       worktree_removed = true;
       await this.opts.registry.update(rec.agent_id, { worktree: null });
     }
@@ -401,12 +438,27 @@ export class Orchestrator {
     let worktree_removed = false;
     let branch_deleted = false;
     if (rec.worktree) {
-      await this.opts.worktrees.remove(rec.worktree.path, { delete_branch: true });
+      // Use the per-agent repo_root (stored at spawn time) instead of
+      // the orchestrator's default. In multi-repo workspaces where the
+      // server's launch cwd isn't itself a git repo, the default
+      // Worktrees instance points at the wrong directory and discard
+      // would fail with "fatal: not a git repository".
+      await this.worktreesFor(rec).remove(rec.worktree.path, { delete_branch: true });
       worktree_removed = true;
       branch_deleted = true;
       await this.opts.registry.update(rec.agent_id, { worktree: null });
     }
     return { agent_id: rec.agent_id, worktree_removed, branch_deleted };
+  }
+
+  /** Return a Worktrees instance scoped to the agent's recorded
+   *  repo_root, falling back to the orchestrator default for legacy
+   *  records (created before 0.4.0) that don't have one. */
+  private worktreesFor(rec: AgentRecord): Worktrees {
+    if (rec.repo_root && rec.repo_root !== this.opts.repoRoot) {
+      return new Worktrees(rec.repo_root);
+    }
+    return this.opts.worktrees;
   }
 
   async waitForAgent(agent_id: string): Promise<void> {
@@ -450,6 +502,20 @@ export class Orchestrator {
     } else if (input.overrides?.developer_instructions_append) {
       instructions += "\n\n" + input.overrides.developer_instructions_append;
     }
+    // Rust repos: codex agents reflexively run `cargo fmt` (often
+    // implicitly via `cargo build` checks) and rewrite unrelated files,
+    // producing huge churn diffs. Detect Cargo.toml at the worktree
+    // root and prepend a hard guardrail. Empirically eliminates the
+    // ~20-30 file-churn-per-spawn pattern.
+    if (preset.worktree && cwd && detectRustRepo(cwd)) {
+      instructions =
+        instructions +
+        "\n\n## Rust formatting guardrail\n" +
+        "DO NOT run `cargo fmt`, `rustfmt`, or any auto-format tool. " +
+        "These reformat unrelated files and produce massive churn diffs. " +
+        "If a build step would format files as a side effect, disable that step or run a narrower one. " +
+        "Before committing, manually `git diff --stat` and revert any non-target file you didn't intend to change.";
+    }
     return instructions;
   }
 
@@ -457,6 +523,7 @@ export class Orchestrator {
     agent_id: string,
     preset: RolePreset,
     callInput: CodexCallInput,
+    baseRef: string | null,
   ): void {
     // Per-agent stderr log at <stateDir>/logs/<agent_id>.codex.stderr.
     // Always-on (cheap, bounded by codex's own output volume); surfaces
@@ -513,12 +580,18 @@ export class Orchestrator {
         // 60s default fires for every role regardless of preset.timeout_seconds.
         // The outer withTimeout is kept as a belt-and-suspenders safeguard.
         const result = await withTimeout(child.call(callInput, timeoutMs), timeoutMs);
+        // Capture branch/SHA/diff-stat for worktree-bearing roles so
+        // result() callers see structured commit info even when
+        // last_output_preview truncates the prose. Best-effort —
+        // failures here don't fail the agent.
+        const delta = await captureDelta(callInput.cwd, baseRef).catch(() => null);
         const completed = await this.opts.registry.update(agent_id, {
           status: "completed",
           thread_id: result.threadId || null,
           last_output: result.content,
           ended_at: new Date().toISOString(),
           pid: null,
+          ...(delta ? { delta } : {}),
         });
         await this.mirrorWorker(completed);
       } catch (err: unknown) {
@@ -530,7 +603,7 @@ export class Orchestrator {
           pid: null,
         };
         if (finalStatus === "failed") {
-          const kind = classifyError(message, stderrTail);
+          const classified = classifyErrorDetailed(message, stderrTail);
           // Stash a short stderr tail on the record for supervisors who
           // want to eyeball it without reading the full log file. Cap
           // at 2KB — the tail here is purely informational.
@@ -538,7 +611,11 @@ export class Orchestrator {
           patch.error = {
             message,
             ...(stderr_tail ? { stderr_tail } : {}),
-            ...(kind ? { kind } : {}),
+            ...(classified.kind ? { kind: classified.kind } : {}),
+            ...(classified.retry_at ? { retry_at: classified.retry_at } : {}),
+            ...(classified.retry_after_seconds !== undefined
+              ? { retry_after_seconds: classified.retry_after_seconds }
+              : {}),
           };
         }
         const updated = await this.opts.registry.update(agent_id, patch);
@@ -551,6 +628,111 @@ export class Orchestrator {
     })();
     this.tasks.set(agent_id, task);
   }
+}
+
+/** Detect whether the given path is the root of a Rust crate/workspace.
+ *  We only check the top level — sub-crates inside a polyglot repo
+ *  don't trigger the guardrail (false positive risk vs. cost of a
+ *  brief disclaimer). */
+function detectRustRepo(cwd: string): boolean {
+  try {
+    return existsSync(join(cwd, "Cargo.toml"));
+  } catch {
+    return false;
+  }
+}
+
+/** Capture branch / commit SHA / diff-stat from a worktree after the
+ *  agent finishes. Used to build `AgentRecord.delta`. Returns null when
+ *  the cwd isn't a worktree, the base ref isn't reachable, or git
+ *  fails for any reason. */
+async function captureDelta(
+  cwd: string,
+  baseRef: string | null,
+): Promise<AgentDelta | null> {
+  // Cheap probe: is this cwd inside a git worktree at all? Reviewer
+  // and planner roles run in the main repoRoot or no worktree, so we
+  // can skip the more expensive git calls below for them.
+  try {
+    await execa("git", ["-C", cwd, "rev-parse", "--is-inside-work-tree"]);
+  } catch {
+    return null;
+  }
+
+  let commit_sha: string | null = null;
+  try {
+    const { stdout } = await execa("git", ["-C", cwd, "rev-parse", "HEAD"]);
+    commit_sha = stdout.trim() || null;
+  } catch {
+    // ignore
+  }
+
+  let branch: string | null = null;
+  try {
+    const { stdout } = await execa("git", [
+      "-C",
+      cwd,
+      "rev-parse",
+      "--abbrev-ref",
+      "HEAD",
+    ]);
+    const name = stdout.trim();
+    branch = name && name !== "HEAD" ? name : null;
+  } catch {
+    // ignore
+  }
+
+  // Diff stat against the spawn-time base_ref. We use the explicit
+  // base_ref (passed in from the orchestrator at launch) rather than
+  // @{upstream}, because `git worktree add -b` does not set an upstream
+  // for the new local branch — @{upstream} would always fail.
+  let diff_stat: string | null = null;
+  let commits_ahead: number | null = null;
+  if (baseRef) {
+    const mergeBase = await execa("git", [
+      "-C",
+      cwd,
+      "merge-base",
+      "HEAD",
+      baseRef,
+    ]).then(
+      (r) => r.stdout.trim(),
+      () => null,
+    );
+    if (mergeBase) {
+      const stat = await execa("git", [
+        "-C",
+        cwd,
+        "diff",
+        "--stat",
+        `${mergeBase}..HEAD`,
+      ]).then(
+        (r) => r.stdout,
+        () => "",
+      );
+      diff_stat = stat ? stat.slice(0, 4096) : null;
+      const aheadStr = await execa("git", [
+        "-C",
+        cwd,
+        "rev-list",
+        "--count",
+        `${mergeBase}..HEAD`,
+      ]).then(
+        (r) => r.stdout.trim(),
+        () => null,
+      );
+      const n = aheadStr ? Number(aheadStr) : NaN;
+      commits_ahead = Number.isFinite(n) ? n : null;
+    }
+  }
+
+  // Suppress empty deltas — if we have nothing meaningful, don't
+  // bother attaching the field.
+  if (commit_sha === null && diff_stat === null && commits_ahead === null) {
+    return null;
+  }
+
+  return { commit_sha, branch, diff_stat, commits_ahead };
 }
 
 function canonicalGitDir(repoRoot: string): string {

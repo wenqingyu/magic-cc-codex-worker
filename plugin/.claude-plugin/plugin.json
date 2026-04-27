@@ -1,6 +1,6 @@
 {
   "name": "magic-codex",
-  "version": "0.3.9",
+  "version": "0.4.2",
   "description": "Parallel Codex workers inside Claude Code — multi-agent orchestration with git worktree isolation, resumable sessions, and dual-model PR review.",
   "author": {
     "name": "Wenqing Yu",

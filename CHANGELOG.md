@@ -2,6 +2,17 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.2] — 2026-04-27
+
+Metadata-only release that fixes a release-process bug from 0.4.0 / 0.4.1.
+
+### Fixed
+- **`plugin/.claude-plugin/plugin.json` was never bumped past `0.3.9`**, so Claude Code's plugin loader kept labeling the cache directory `0.3.9` even though the code on disk was the new release. Functionally invisible upgrades — `mtime` and code fingerprints (`demote` / `sandbox_denied` / `rate_limited`) confirmed the new behavior was active, but every diagnostic that read the plugin label reported the old version. Bumped to 0.4.2.
+- **`src/mcp/codex-client.ts` MCP banner version** was also missed in the 0.4.1 commit (still said `0.4.0`). Bumped.
+
+### Added
+- **Build-time version-drift guard** in `scripts/build.mjs`. The build now fails hard when `package.json`, `plugin/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (both the metadata and plugins[0] versions), or the two MCP banner literals disagree. Prevents this class of silent-mislabel bug from recurring.
+
 ## [0.4.1] — 2026-04-27
 
 This release closes the dispatcher-trust gap and adds a visibility surface for the workspace-write sandbox limitation that 0.4.0 only partially worked around.

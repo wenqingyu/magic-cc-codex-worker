@@ -151,6 +151,50 @@ describe("Registry zombie sweep on load", () => {
   });
 });
 
+describe("Registry change events", () => {
+  it("emits 'change' on every update with { before_status, record }", async () => {
+    const rec = await registry.create({
+      role: "implementer",
+      cwd: "/x",
+      model: "m",
+      sandbox: "danger-full-access",
+      approval_policy: "never",
+      last_prompt: "p",
+    });
+    const events: Array<{ before_status: string; agent_id: string; status: string }> = [];
+    registry.on("change", (ev) => {
+      events.push({
+        before_status: ev.before_status,
+        agent_id: ev.record.agent_id,
+        status: ev.record.status,
+      });
+    });
+    await registry.update(rec.agent_id, { status: "running" });
+    await registry.update(rec.agent_id, { status: "completed", ended_at: new Date().toISOString() });
+    expect(events).toEqual([
+      { before_status: "queued", agent_id: rec.agent_id, status: "running" },
+      { before_status: "running", agent_id: rec.agent_id, status: "completed" },
+    ]);
+  });
+
+  it("does NOT emit change events from the zombie sweep on load", async () => {
+    const orig = await registry.create({
+      role: "reviewer",
+      cwd: "/x",
+      model: "m",
+      sandbox: "read-only",
+      approval_policy: "never",
+      last_prompt: "p",
+    });
+    await registry.update(orig.agent_id, { status: "running" });
+    const fresh = new Registry(dir);
+    const events: unknown[] = [];
+    fresh.on("change", (ev) => events.push(ev));
+    await fresh.list();
+    expect(events).toEqual([]);
+  });
+});
+
 describe("Registry.create — repo_root", () => {
   it("persists repo_root on the record when provided", async () => {
     const rec = await registry.create({

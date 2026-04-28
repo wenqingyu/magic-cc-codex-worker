@@ -139,6 +139,13 @@ const MergeInputZ = z.object({
   keep_worktree: z.boolean().optional(),
 });
 const DiscardInputZ = z.object({ agent_id: z.string() });
+const WaitInputZ = z.object({
+  timeout_seconds: z.number().int().positive().max(1800).optional(),
+  since: z.string().optional(),
+  agent_ids: z.array(z.string()).optional(),
+  terminal_only: z.boolean().optional(),
+  batch_window_ms: z.number().int().min(0).max(5000).optional(),
+});
 
 async function main() {
   const repoRoot = await detectRepoRoot();
@@ -325,6 +332,42 @@ async function main() {
         },
       },
       {
+        name: "wait",
+        description:
+          "Block until any tracked agent transitions to a terminal state (completed/failed/cancelled), or until timeout. Returns immediately if events already happened since the supplied `since` cursor (replay-safe across reconnects). Eliminates the poll-based ScheduleWakeup loop — call this once after spawning, react to the events, call again with the returned `observed_at` until `agents_still_running === 0`.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            timeout_seconds: {
+              type: "number",
+              description:
+                "Max seconds to block before returning {timed_out: true}. Default 1500 (25 min); the longer you set this the better — return is instant when events arrive, and a long timeout keeps the prompt cache warm across the wait/react loop. Capped at 1800.",
+            },
+            since: {
+              type: "string",
+              description:
+                "ISO 8601 cursor. Events with `record.ended_at > since` are returned immediately without blocking — guarantees gap-free delivery across reconnects. Pass the previous response's `observed_at`.",
+            },
+            agent_ids: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "Optional whitelist; default = all agents. Use this when you fanned out a known batch and don't care about unrelated work.",
+            },
+            terminal_only: {
+              type: "boolean",
+              description:
+                "Default true. When true, only completed/failed/cancelled transitions resolve the wait. Set false to wake on every status change (queued->running->...).",
+            },
+            batch_window_ms: {
+              type: "number",
+              description:
+                "After the first matching event, hold the response open this many ms to coalesce co-occurring events into one batch. Default 100. Set to 0 to disable batching (one event per call).",
+            },
+          },
+        },
+      },
+      {
         name: "get_delegation_policy",
         description:
           "Return the user's configured delegation policy (minimal/balance/max) and the guidance for each level. CALL THIS AT THE START OF EVERY SESSION where you might spawn Codex agents — the current level tells you how aggressively to offload work from Claude to Codex.",
@@ -466,6 +509,11 @@ async function main() {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         structuredContent: result as unknown as Record<string, unknown>,
       };
+    }
+    if (name === "wait") {
+      const parsed = WaitInputZ.parse(args);
+      void parsed;
+      throw new Error("wait: not yet implemented");
     }
     if (name === "get_delegation_policy") {
       const policy = await resolveDelegationPolicy({

@@ -20,6 +20,7 @@ import { readMfConventions } from "./mf/conventions.js";
 import { LinearClient } from "./mf/linear.js";
 import { WorkersMirror } from "./mf/workers.js";
 import { GhClient } from "./mf/github.js";
+import { handleWait } from "./wait.js";
 import type { AgentRecord } from "./types.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -512,8 +513,11 @@ async function main() {
     }
     if (name === "wait") {
       const parsed = WaitInputZ.parse(args);
-      void parsed;
-      throw new Error("wait: not yet implemented");
+      const result = await handleWait(parsed, registry);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        structuredContent: result as unknown as Record<string, unknown>,
+      };
     }
     if (name === "get_delegation_policy") {
       const policy = await resolveDelegationPolicy({

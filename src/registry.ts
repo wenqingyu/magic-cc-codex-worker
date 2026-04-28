@@ -1,5 +1,6 @@
 import { writeFile, readFile, mkdir, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { EventEmitter } from "node:events";
 import { join } from "node:path";
 import { nanoid } from "nanoid";
 import type {
@@ -25,6 +26,14 @@ export interface CreateInput {
   repo_root?: string | null;
 }
 
+/** Event payload emitted on every successful Registry.update().
+ *  Consumers can branch on `before_status` to detect specific
+ *  transitions (e.g. running -> completed). */
+export interface RegistryChangeEvent {
+  before_status: AgentRecord["status"];
+  record: AgentRecord;
+}
+
 const ROLE_PREFIX: Record<AgentRole, string> = {
   implementer: "impl",
   reviewer: "rvw",
@@ -32,12 +41,14 @@ const ROLE_PREFIX: Record<AgentRole, string> = {
   generic: "gen",
 };
 
-export class Registry {
+export class Registry extends EventEmitter {
   private state: RegistrySnapshot = { version: 1, agents: {} };
   private loaded = false;
   private writeLock: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly stateDir: string) {}
+  constructor(private readonly stateDir: string) {
+    super();
+  }
 
   /** Returns the state directory root (e.g. `<repo>/.magic-codex`).
    *  Callers use this to derive sibling paths like `logs/<agent>.stderr`. */
@@ -83,6 +94,7 @@ export class Registry {
       };
     }
     if (changed) {
+      // No `change` event emitted: sweep is a load-time maintenance pass, not a real-time transition.
       // Awaited so the load() caller (and afterEach() cleanup in tests)
       // doesn't race with an in-flight write. Non-fatal — a write
       // error here just means the swept state isn't persisted; next
@@ -149,9 +161,15 @@ export class Registry {
       await this.load();
       const existing = this.state.agents[agent_id];
       if (!existing) throw new Error(`agent ${agent_id} not found`);
+      const before_status = existing.status;
       const merged: AgentRecord = { ...existing, ...patch, agent_id };
       this.state.agents[agent_id] = merged;
       await this.persist();
+      try {
+        this.emit("change", { before_status, record: merged } satisfies RegistryChangeEvent);
+      } catch {
+        // Ignore listener errors so a buggy subscriber cannot break persistence.
+      }
       return merged;
     });
   }

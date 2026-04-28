@@ -2798,11 +2798,11 @@ var require_validate = __commonJS({
         jsonPointer = $data;
         data = names_1.default.rootData;
       } else {
-        const matches = RELATIVE_JSON_POINTER.exec($data);
-        if (!matches)
+        const matches2 = RELATIVE_JSON_POINTER.exec($data);
+        if (!matches2)
           throw new Error(`Invalid JSON-pointer: ${$data}`);
-        const up = +matches[1];
-        jsonPointer = matches[2];
+        const up = +matches2[1];
+        jsonPointer = matches2[2];
         if (jsonPointer === "#") {
           if (up >= dataLevel)
             throw new Error(errorMsg("property/index", up));
@@ -3443,11 +3443,11 @@ var require_schemes = __commonJS({
         urnComponent.error = "URN can not be parsed";
         return urnComponent;
       }
-      const matches = urnComponent.path.match(URN_REG);
-      if (matches) {
+      const matches2 = urnComponent.path.match(URN_REG);
+      if (matches2) {
         const scheme = options.scheme || urnComponent.scheme || "urn";
-        urnComponent.nid = matches[1].toLowerCase();
-        urnComponent.nss = matches[2];
+        urnComponent.nid = matches2[1].toLowerCase();
+        urnComponent.nss = matches2[2];
         const urnScheme = `${scheme}:${options.nid || urnComponent.nid}`;
         const schemeHandler = getSchemeHandler(urnScheme);
         urnComponent.path = void 0;
@@ -3746,17 +3746,17 @@ var require_fast_uri = __commonJS({
           uri = "//" + uri;
         }
       }
-      const matches = uri.match(URI_PARSE);
-      if (matches) {
-        parsed.scheme = matches[1];
-        parsed.userinfo = matches[3];
-        parsed.host = matches[4];
-        parsed.port = parseInt(matches[5], 10);
-        parsed.path = matches[6] || "";
-        parsed.query = matches[7];
-        parsed.fragment = matches[8];
+      const matches2 = uri.match(URI_PARSE);
+      if (matches2) {
+        parsed.scheme = matches2[1];
+        parsed.userinfo = matches2[3];
+        parsed.host = matches2[4];
+        parsed.port = parseInt(matches2[5], 10);
+        parsed.path = matches2[6] || "";
+        parsed.query = matches2[7];
+        parsed.fragment = matches2[8];
         if (isNaN(parsed.port)) {
-          parsed.port = matches[5];
+          parsed.port = matches2[5];
         }
         if (parsed.host) {
           const ipv4result = isIPv4(parsed.host);
@@ -6567,12 +6567,12 @@ var require_formats = __commonJS({
     var DATE = /^(\d\d\d\d)-(\d\d)-(\d\d)$/;
     var DAYS = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     function date3(str) {
-      const matches = DATE.exec(str);
-      if (!matches)
+      const matches2 = DATE.exec(str);
+      if (!matches2)
         return false;
-      const year = +matches[1];
-      const month = +matches[2];
-      const day = +matches[3];
+      const year = +matches2[1];
+      const month = +matches2[2];
+      const day = +matches2[3];
       return month >= 1 && month <= 12 && day >= 1 && day <= (month === 2 && isLeapYear(year) ? 29 : DAYS[month]);
     }
     function compareDate(d1, d2) {
@@ -6587,16 +6587,16 @@ var require_formats = __commonJS({
     var TIME = /^(\d\d):(\d\d):(\d\d(?:\.\d+)?)(z|([+-])(\d\d)(?::?(\d\d))?)?$/i;
     function getTime(strictTimeZone) {
       return function time3(str) {
-        const matches = TIME.exec(str);
-        if (!matches)
+        const matches2 = TIME.exec(str);
+        if (!matches2)
           return false;
-        const hr = +matches[1];
-        const min = +matches[2];
-        const sec = +matches[3];
-        const tz = matches[4];
-        const tzSign = matches[5] === "-" ? -1 : 1;
-        const tzH = +(matches[6] || 0);
-        const tzM = +(matches[7] || 0);
+        const hr = +matches2[1];
+        const min = +matches2[2];
+        const sec = +matches2[3];
+        const tz = matches2[4];
+        const tzSign = matches2[5] === "-" ? -1 : 1;
+        const tzH = +(matches2[6] || 0);
+        const tzM = +(matches2[7] || 0);
         if (tzH > 23 || tzM > 59 || strictTimeZone && !tz)
           return false;
         if (hr <= 23 && min <= 59 && sec < 60)
@@ -25220,6 +25220,7 @@ import { homedir as homedir2 } from "node:os";
 // src/registry.ts
 import { writeFile, readFile, mkdir, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { EventEmitter as EventEmitter2 } from "node:events";
 import { join } from "node:path";
 
 // node_modules/nanoid/index.js
@@ -25259,8 +25260,9 @@ var ROLE_PREFIX = {
   planner: "plan",
   generic: "gen"
 };
-var Registry = class {
+var Registry = class extends EventEmitter2 {
   constructor(stateDir) {
+    super();
     this.stateDir = stateDir;
   }
   state = { version: 1, agents: {} };
@@ -25363,9 +25365,14 @@ var Registry = class {
       await this.load();
       const existing = this.state.agents[agent_id];
       if (!existing) throw new Error(`agent ${agent_id} not found`);
+      const before_status = existing.status;
       const merged = { ...existing, ...patch, agent_id };
       this.state.agents[agent_id] = merged;
       await this.persist();
+      try {
+        this.emit("change", { before_status, record: merged });
+      } catch {
+      }
       return merged;
     });
   }
@@ -27709,7 +27716,7 @@ var CodexChild = class {
       stderr: "pipe"
     });
     this.client = new Client(
-      { name: "magic-codex", version: "0.4.2" },
+      { name: "magic-codex", version: "0.5.0" },
       { capabilities: {} }
     );
     await this.client.connect(this.transport);
@@ -28029,6 +28036,110 @@ var GhClient = class {
   }
 };
 
+// src/wait.ts
+var TERMINAL_STATUSES2 = ["completed", "failed", "cancelled"];
+function summarize(rec) {
+  return {
+    agent_id: rec.agent_id,
+    role: rec.role,
+    status: rec.status,
+    thread_id: rec.thread_id,
+    worktree_path: rec.worktree?.path ?? null,
+    branch: rec.worktree?.branch ?? null,
+    base_ref: rec.worktree?.base_ref ?? null,
+    repo_root: rec.repo_root ?? null,
+    issue_id: rec.issue_id,
+    pr_number: rec.pr_number,
+    ended_at: rec.ended_at,
+    last_output_preview: rec.last_output?.slice(0, 500) ?? null,
+    error_summary: rec.error?.message ?? null,
+    error_kind: rec.error?.kind ?? null,
+    error_retry_at: rec.error?.retry_at ?? null,
+    error_retry_after_seconds: rec.error?.retry_after_seconds ?? null,
+    commit_sha: rec.delta?.commit_sha ?? null,
+    diff_stat: rec.delta?.diff_stat ?? null,
+    commits_ahead: rec.delta?.commits_ahead ?? null
+  };
+}
+function matches(rec, filter) {
+  if (filter.agent_ids && !filter.agent_ids.includes(rec.agent_id)) return false;
+  const terminalOnly = filter.terminal_only !== false;
+  if (terminalOnly && !TERMINAL_STATUSES2.includes(rec.status)) return false;
+  return true;
+}
+function isAfter(timeIso, sinceIso) {
+  if (!timeIso) return false;
+  return Date.parse(timeIso) > Date.parse(sinceIso);
+}
+function buildResponse(events, allAgents, agentIds, timedOut) {
+  const observed_at = (/* @__PURE__ */ new Date()).toISOString();
+  const scope = agentIds ? allAgents.filter((r) => agentIds.includes(r.agent_id)) : allAgents;
+  const stillRunning = scope.filter((r) => !TERMINAL_STATUSES2.includes(r.status));
+  return {
+    events: events.map(summarize),
+    observed_at,
+    agents_still_running: stillRunning.length,
+    agents_running_ids: stillRunning.map((r) => r.agent_id),
+    timed_out: timedOut
+  };
+}
+function collectReplay(input, registryAgents) {
+  if (!input.since) return [];
+  const matched = [];
+  for (const rec of registryAgents) {
+    if (!matches(rec, input)) continue;
+    if (input.terminal_only !== false) {
+      if (!isAfter(rec.ended_at, input.since)) continue;
+    } else if (!isAfter(rec.started_at ?? rec.ended_at, input.since)) {
+      continue;
+    }
+    matched.push(rec);
+  }
+  return matched;
+}
+async function handleWait(input, registry2) {
+  const all = await registry2.list();
+  const replay = collectReplay(input, all);
+  if (replay.length > 0) {
+    return buildResponse(replay, all, input.agent_ids, false);
+  }
+  const timeoutMs = (input.timeout_seconds ?? 1500) * 1e3;
+  const batchMs = input.batch_window_ms ?? 100;
+  return new Promise((resolve3) => {
+    const matched = [];
+    let batchTimer = null;
+    let timeoutTimer = null;
+    const cleanup = () => {
+      registry2.off("change", onChange);
+      if (batchTimer) clearTimeout(batchTimer);
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+    };
+    const flush = async () => {
+      cleanup();
+      const fresh = await registry2.list();
+      resolve3(buildResponse(matched, fresh, input.agent_ids, false));
+    };
+    const onChange = (ev) => {
+      if (!matches(ev.record, input)) return;
+      if (matched.some((r) => r.agent_id === ev.record.agent_id)) return;
+      matched.push(ev.record);
+      if (batchTimer === null) {
+        if (batchMs === 0) {
+          void flush();
+        } else {
+          batchTimer = setTimeout(() => void flush(), batchMs);
+        }
+      }
+    };
+    timeoutTimer = setTimeout(async () => {
+      cleanup();
+      const fresh = await registry2.list();
+      resolve3(buildResponse([], fresh, input.agent_ids, true));
+    }, timeoutMs);
+    registry2.on("change", onChange);
+  });
+}
+
 // src/index.ts
 var __filename = fileURLToPath3(import.meta.url);
 var __dirname = dirname2(__filename);
@@ -28132,6 +28243,13 @@ var MergeInputZ = external_exports.object({
   keep_worktree: external_exports.boolean().optional()
 });
 var DiscardInputZ = external_exports.object({ agent_id: external_exports.string() });
+var WaitInputZ = external_exports.object({
+  timeout_seconds: external_exports.number().int().positive().max(1800).optional(),
+  since: external_exports.string().optional(),
+  agent_ids: external_exports.array(external_exports.string()).optional(),
+  terminal_only: external_exports.boolean().optional(),
+  batch_window_ms: external_exports.number().int().min(0).max(5e3).optional()
+});
 async function main() {
   const repoRoot = await detectRepoRoot();
   const stateDir = process.env.MAGIC_CODEX_STATE_DIR ? resolve2(repoRoot, process.env.MAGIC_CODEX_STATE_DIR) : join8(repoRoot, ".magic-codex");
@@ -28160,7 +28278,7 @@ async function main() {
     mfConventions
   });
   const server = new Server(
-    { name: "magic-codex", version: "0.4.2" },
+    { name: "magic-codex", version: "0.5.0" },
     { capabilities: { tools: {} } }
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -28300,6 +28418,36 @@ async function main() {
         }
       },
       {
+        name: "wait",
+        description: "Block until any tracked agent transitions to a terminal state (completed/failed/cancelled), or until timeout. Returns immediately if events already happened since the supplied `since` cursor (replay-safe across reconnects). Eliminates the poll-based ScheduleWakeup loop \u2014 call this once after spawning, react to the events, call again with the returned `observed_at` until `agents_still_running === 0`.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            timeout_seconds: {
+              type: "number",
+              description: "Max seconds to block before returning {timed_out: true}. Default 1500 (25 min); the longer you set this the better \u2014 return is instant when events arrive, and a long timeout keeps the prompt cache warm across the wait/react loop. Capped at 1800."
+            },
+            since: {
+              type: "string",
+              description: "ISO 8601 cursor. Events with `record.ended_at > since` are returned immediately without blocking \u2014 guarantees gap-free delivery across reconnects. Pass the previous response's `observed_at`."
+            },
+            agent_ids: {
+              type: "array",
+              items: { type: "string" },
+              description: "Optional whitelist; default = all agents. Use this when you fanned out a known batch and don't care about unrelated work."
+            },
+            terminal_only: {
+              type: "boolean",
+              description: "Default true. When true, only completed/failed/cancelled transitions resolve the wait. Set false to wake on every status change (queued->running->...)."
+            },
+            batch_window_ms: {
+              type: "number",
+              description: "After the first matching event, hold the response open this many ms to coalesce co-occurring events into one batch. Default 100. Set to 0 to disable batching (one event per call)."
+            }
+          }
+        }
+      },
+      {
         name: "get_delegation_policy",
         description: "Return the user's configured delegation policy (minimal/balance/max) and the guidance for each level. CALL THIS AT THE START OF EVERY SESSION where you might spawn Codex agents \u2014 the current level tells you how aggressively to offload work from Claude to Codex.",
         inputSchema: { type: "object", properties: {} }
@@ -28435,6 +28583,14 @@ async function main() {
     if (name === "discard") {
       const parsed = DiscardInputZ.parse(args);
       const result = await orch.discard(parsed);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        structuredContent: result
+      };
+    }
+    if (name === "wait") {
+      const parsed = WaitInputZ.parse(args);
+      const result = await handleWait(parsed, registry2);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         structuredContent: result

@@ -2,6 +2,21 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.0] — 2026-04-28
+
+### Added
+- **`wait` MCP tool — push notifications instead of polling.** Block until any tracked agent reaches a terminal state (`completed` / `failed` / `cancelled`), then return the batch of agents that just transitioned. Replaces the dispatcher's `ScheduleWakeup` poll loop with a single blocking call: spawn agents → call `wait` once → react to events → optionally call `wait` again with the returned `observed_at` cursor. The connection stays open while waiting, so the prompt cache never goes cold between checks. Eliminates the 5-min poll cadence and its cache-miss costs.
+  - **Replay-safe via `since` cursor.** Pass the previous response's `observed_at` to guarantee gap-free delivery across reconnects. Historical events are returned synchronously without blocking.
+  - **Batch coalescing.** When several agents finish within milliseconds of each other (common at the tail of a fan-out batch), `wait` holds the response open for `batch_window_ms` (default 100) and returns them all together. Set to 0 to disable.
+  - **Self-describing response.** `agents_still_running` and `agents_running_ids` tell the caller whether and how to call again — no separate `list` or `status` round-trip needed.
+  - **Filtering.** `agent_ids: ["..."]` scopes the wait to a known fan-out batch; `terminal_only: false` widens to every status transition. Defaults match the common dispatcher case.
+- **`Registry` extends `EventEmitter`** and emits `change` (`{ before_status, record }`) on every successful update. Internal API; the zombie sweep on load explicitly does not emit (it's a maintenance pass, not a real-time transition).
+
+### Internal
+- New module `src/wait.ts` houses the handler logic (replay + live subscribe + batch + timeout). Independent of the MCP transport so it's straightforward to unit-test.
+- 9 new tests across `Registry` (event emission + zombie-sweep silence) and `wait` (replay, agent_ids filter, since cursor, live subscribe, batch coalescing, timeout/listener-leak guard, scoped agents_still_running). Total: 117 (was 108).
+- Build-time version-drift guard from 0.4.2 caught two missed bumps during release prep — working as intended.
+
 ## [0.4.2] — 2026-04-27
 
 Metadata-only release that fixes a release-process bug from 0.4.0 / 0.4.1.

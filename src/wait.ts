@@ -1,4 +1,4 @@
-import type { Registry } from "./registry.js";
+import type { Registry, RegistryChangeEvent } from "./registry.js";
 import type { AgentRecord, AgentStatus } from "./types.js";
 
 const TERMINAL_STATUSES: AgentStatus[] = ["completed", "failed", "cancelled"];
@@ -120,5 +120,45 @@ export async function handleWait(input: WaitInput, registry: Registry): Promise<
     return buildResponse(replay, all, input.agent_ids, false);
   }
 
-  return buildResponse([], all, input.agent_ids, true);
+  const timeoutMs = (input.timeout_seconds ?? 1500) * 1000;
+  const batchMs = input.batch_window_ms ?? 100;
+
+  return new Promise<WaitResult>((resolve) => {
+    const matched: AgentRecord[] = [];
+    let batchTimer: NodeJS.Timeout | null = null;
+    let timeoutTimer: NodeJS.Timeout | null = null;
+
+    const cleanup = () => {
+      registry.off("change", onChange);
+      if (batchTimer) clearTimeout(batchTimer);
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+    };
+
+    const flush = async () => {
+      cleanup();
+      const fresh = await registry.list();
+      resolve(buildResponse(matched, fresh, input.agent_ids, false));
+    };
+
+    const onChange = (ev: RegistryChangeEvent) => {
+      if (!matches(ev.record, input)) return;
+      if (matched.some((r) => r.agent_id === ev.record.agent_id)) return;
+      matched.push(ev.record);
+      if (batchTimer === null) {
+        if (batchMs === 0) {
+          void flush();
+        } else {
+          batchTimer = setTimeout(() => void flush(), batchMs);
+        }
+      }
+    };
+
+    timeoutTimer = setTimeout(async () => {
+      cleanup();
+      const fresh = await registry.list();
+      resolve(buildResponse([], fresh, input.agent_ids, true));
+    }, timeoutMs);
+
+    registry.on("change", onChange);
+  });
 }

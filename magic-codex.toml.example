@@ -1,6 +1,6 @@
-# magic-cc-codex-worker — project config
-# Copy to `codex-team.toml` at your repo root (commit it for team-wide conventions).
-# Per-user overrides live at `~/.codex-team/config.toml`.
+# magic-codex — project config
+# Copy to `magic-codex.toml` at your repo root (commit it for team-wide conventions).
+# Per-user overrides live at `~/.magic-codex/config.toml` (not committed).
 
 # --- Delegation policy ---
 # How aggressively should Claude offload work to Codex?
@@ -8,18 +8,54 @@
 [delegation]
 level = "balance"
 
-# --- Role overrides ---
-# Only specified fields override the built-in defaults.
-# See src/roles/defaults/*.toml for the full defaults.
+# --- Models ---
+# Recommended approach (mid-2026): leave magic-codex's `model` field
+# UNSET on every role and let codex inherit your `~/.codex/config.toml`
+# defaults + profiles. magic-codex passes through to the codex MCP
+# server, which already honors your codex global config.
+#
+# A solid `~/.codex/config.toml` baseline looks like this:
+#
+#   model = "gpt-5.5"                        # gpt-5.4 as fallback during rollout
+#   model_reasoning_effort = "high"
+#   model_reasoning_summary = "concise"
+#   service_tier = "fast"
+#   review_model = "gpt-5.5"                 # used by codex's /review
+#   web_search = "cached"
+#
+#   [profiles.coding]   model_reasoning_effort = "high"   # daily work
+#   [profiles.deep]     model_reasoning_effort = "xhigh"  # hard reviews / planning
+#   [profiles.fast]     model = "gpt-5-codex-mini"        # cheap iteration
+#
+# Switch profiles via `codex --profile <name>` at the codex CLI level.
+# magic-codex doesn't currently surface a per-spawn `profile` field, so
+# the codex global config is where reasoning-depth / web-search /
+# service-tier knobs live.
+#
+# WHEN TO PIN A MODEL IN magic-codex.toml: only when you want a role to
+# diverge from your codex default — e.g., budget-cap the `generic` role
+# to `gpt-5-codex-mini` while implementer/reviewer/planner ride the
+# stronger default.
 
 # [roles.implementer]
-# model = "gpt-5-codex"         # override to pin a specific Codex model
+# # Inherit codex default (gpt-5.5 + your `coding` profile reasoning depth).
+# # Pin only if you want a different model than your codex global.
+# # model = "gpt-5.5"
 # timeout_seconds = 1800
-# sandbox = "workspace-write"
+# sandbox = "danger-full-access"   # default since 0.4.0; see CHANGELOG
 
 # [roles.reviewer]
-# model = "gpt-5"               # force a strong reasoning model for dual-review
+# # Same as implementer — inherit. If you have a `deep` codex profile
+# # configured, you'd switch to it via `codex --profile deep` rather
+# # than overriding here.
+# # model = "gpt-5.5"
 # timeout_seconds = 900
 
 # [roles.planner]
-# model = "gpt-5"
+# # Inherit. Pair with codex `deep` profile for complex decomposition.
+# # model = "gpt-5.5"
+# timeout_seconds = 1200
+
+# [roles.generic]
+# # Cheap path for trivial repetitive work. Pin to mini to budget-cap.
+# # model = "gpt-5-codex-mini"

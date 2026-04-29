@@ -1,6 +1,6 @@
 {
   "name": "magic-cc-codex-worker",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Parallel Codex workers inside Claude Code — multi-agent orchestration.",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
@@ -15,7 +15,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf plugin/dist"
+    "clean": "rm -rf plugin/dist",
+    "release": "node scripts/release.mjs",
+    "release:dry-run": "node scripts/release.mjs --dry-run"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",

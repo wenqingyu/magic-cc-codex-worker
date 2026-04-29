@@ -2,6 +2,18 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.2] — 2026-04-29
+
+Tooling-only release.
+
+### Added
+- **`npm run release` script** (`scripts/release.mjs`) automates the full release procedure: validates clean `main`, refuses to clobber existing tags, verifies the CHANGELOG has an entry for the version in `package.json`, runs build (with the version-drift guard) + tests, creates the annotated tag, pushes it, and creates the GitHub Release with the CHANGELOG section as the body and `--latest` flag. Closes the gap from 0.5.0/0.5.1 where tags got pushed but GitHub Releases didn't, leaving the project's release page stuck at 0.3.9.
+- **`npm run release:dry-run`** prints what would happen without mutating anything.
+- **CONTRIBUTING.md** documents the maintainer release procedure end to end, calling out the five duplicated version literals (and that `plugin/.claude-plugin/plugin.json` is the one Claude Code's plugin loader actually reads).
+
+### Internal
+- Backfilled GitHub Releases for v0.4.0 / v0.4.1 / v0.4.2 / v0.5.0 / v0.5.1 with their CHANGELOG bodies.
+
 ## [0.5.1] — 2026-04-29
 
 Docs-only release.

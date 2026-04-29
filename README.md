@@ -192,32 +192,60 @@ Built-in presets (`src/roles/defaults/`):
 
 | Role | Sandbox | Worktree | Timeout |
 |---|---|---|---|
-| `implementer` | `workspace-write` | branch-per-agent | 30 min |
+| `implementer` | `danger-full-access` | branch-per-agent | 30 min |
 | `reviewer` | `read-only` | detached at PR head (when `pr_number` given) | 10 min |
 | `planner` | `read-only` | none | 15 min |
 | `generic` | `read-only` | none | 15 min |
 
-**Model selection.** By default, each role inherits whatever model your `~/.codex/config.toml` selects. Override per-role or per-spawn:
+> Implementer's `danger-full-access` default landed in 0.4.0. `workspace-write` empirically dropped `.git/worktrees/<id>/index.lock` writes for ~33-67% of macOS spawns even with the writable_roots workaround. The agent is already isolated to a throwaway worktree branch, so `danger-full-access` is the smaller blast radius. Override via `[roles.implementer] sandbox = "workspace-write"` if you need stricter network egress isolation; the lock denials will still happen but 0.4.1's silent-failure detection surfaces them as `failed/kind=sandbox_denied` instead of a misleading `completed`.
+
+### Choosing models
+
+**The per-role model split that was useful in 2025 collapsed in 2026.** `gpt-5.5` (with `gpt-5.4` as a fallback during rollout) is now the unified top model for implementation, review, and planning. The dial that matters is **reasoning effort**, configured via codex CLI profiles — not via magic-codex.
+
+**Recommended approach:** leave `model` unset on every role in `magic-codex.toml` and let codex inherit your `~/.codex/config.toml` defaults + profiles.
+
+A solid codex baseline:
 
 ```toml
-# magic-codex.toml
-[roles.implementer]
-model = "gpt-5-codex"        # or whatever Codex accepts
+# ~/.codex/config.toml
+model = "gpt-5.5"
+model_reasoning_effort = "high"
+service_tier = "fast"
+review_model = "gpt-5.5"
 
-[roles.reviewer]
-model = "gpt-5"              # strong reasoning for dual-review
-timeout_seconds = 900
+[profiles.coding]   # daily work
+model_reasoning_effort = "high"
+
+[profiles.deep]     # hard reviews / planning / refactors
+model_reasoning_effort = "xhigh"
+web_search = "live"
+
+[profiles.fast]     # cheap iteration
+model = "gpt-5-codex-mini"
+model_reasoning_effort = "medium"
 ```
 
-Per-spawn override:
+Switch profiles with `codex --profile <name>` at the codex CLI level. magic-codex passes through to the codex MCP server, which honors your codex config — no magic-codex changes needed when you adjust profiles.
+
+**When to pin a model in `magic-codex.toml`:** only when you want a role to diverge from your codex default. The most common case is budget-capping the `generic` role:
+
+```toml
+[roles.generic]
+model = "gpt-5-codex-mini"   # cheap for repetitive work
+```
+
+Per-spawn overrides remain available:
 
 ```json
 {
   "role": "reviewer",
   "prompt": "...",
-  "overrides": { "model": "gpt-5", "timeout_seconds": 1200 }
+  "overrides": { "model": "gpt-5.5", "timeout_seconds": 1200 }
 }
 ```
+
+See `magic-codex.toml.example` for a copy-paste starter and a richer set of profile recommendations.
 
 ---
 

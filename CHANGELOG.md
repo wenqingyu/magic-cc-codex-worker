@@ -2,6 +2,15 @@
 
 All notable changes documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.1] — 2026-04-29
+
+Docs-only release.
+
+### Changed
+- **Model recommendations refreshed for the mid-2026 codex lineup.** The 2025-era per-role split (`gpt-5.2-codex` for code, `gpt-5` for review, `o3` for planning) collapsed: `gpt-5.5` now handles all three workloads and the dial that matters is reasoning effort, configured via codex CLI profiles (`[profiles.coding]`, `[profiles.deep]`, `[profiles.fast]`). The README "Choosing models" section and `magic-codex.toml.example` now both lead with "leave model unset, configure your `~/.codex/config.toml`" and only show in-magic-codex pinning for the budget-capping case (e.g., `[roles.generic] model = "gpt-5-codex-mini"`).
+- **`magic-codex.toml.example` filename bug fixed.** Header comments referenced the wrong file (`codex-team.toml`); the actual loader reads `magic-codex.toml`. Corrected.
+- **README role table** corrected to show implementer's `danger-full-access` default (was still showing `workspace-write` from before the 0.4.0 switch).
+
 ## [0.5.0] — 2026-04-28
 
 ### Added
